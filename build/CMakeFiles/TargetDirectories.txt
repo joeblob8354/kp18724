@@ -1,0 +1,3 @@
+/mnt/c/Users/joeha/OneDrive/computer_science_cloud/computer_graphics/kp18724/build/CMakeFiles/rebuild_cache.dir
+/mnt/c/Users/joeha/OneDrive/computer_science_cloud/computer_graphics/kp18724/build/CMakeFiles/edit_cache.dir
+/mnt/c/Users/joeha/OneDrive/computer_science_cloud/computer_graphics/kp18724/build/CMakeFiles/kp18724.dir
