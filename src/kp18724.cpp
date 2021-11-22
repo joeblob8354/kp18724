@@ -146,7 +146,7 @@ std::vector<ModelTriangle> objReader() {
 void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, uint32_t colour) {
 	float xDiff = from.x - to.x;
 	float yDiff = from.y - to.y;
-	float depthDiff = from.depth - to.depth;
+	float depthDiff = 1 / from.depth - 1 / to.depth;
 	float numberOfSteps = std::max(abs(xDiff), abs(yDiff));
 	float xStepSize = xDiff / numberOfSteps;
 	float yStepSize = yDiff / numberOfSteps;
@@ -157,11 +157,11 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, uint32_t 
 
 		float pointXDiff = x - to.x;
 		float ratio = pointXDiff / xDiff;
-		float newDepth = abs(to.depth + ratio * depthDiff);
+		float newDepth = 1 / (abs(1 / to.depth + ratio * depthDiff));
 		
 		int xi = round(x);
 		int yi = round(y);
-		if (xi < WIDTH && xi > 0 && yi < HEIGHT && yi > 0) {
+		if (xi < WIDTH && xi >= 0 && yi < HEIGHT && yi >= 0) {
 			float oldDepth = depthBuffer[yi][xi];
 			if (oldDepth < 1 / newDepth) {
 				window.setPixelColour(xi, yi, colour);
@@ -207,10 +207,10 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	float extraPointYDiff = extraPoint.y - topVertex.y;
 	float ratio = extraPointYDiff / yDiff;
 	extraPoint.x = topVertex.x + ratio * xDiff;
-
+	
 	//find the depth of the extra point
-	float depthDiff = bottomVertex.depth - topVertex.depth;
-	extraPoint.depth = topVertex.depth + ratio * depthDiff;
+	float depthDiff = 1 / bottomVertex.depth - 1 / topVertex.depth;
+	extraPoint.depth = 1 / (1 / topVertex.depth + ratio * depthDiff);
 
 	//use interpolation to fill top triangle section, line by line
 	float line1XDiff = extraPoint.x - topVertex.x;
@@ -238,7 +238,7 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 		float pointYDiff = point1.y - topVertex.y;
 		ratio = pointYDiff / yDiff;
-		point1.depth = topVertex.depth + ratio * depthDiff;
+		point1.depth = 1 / (1 / topVertex.depth + ratio * depthDiff);
 
 		float x2 = topVertex.x + (line2XStepSize * i);
 		float y2 = topVertex.y + (line2YStepSize * i);
@@ -246,10 +246,10 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 		point2.y = y2;
 
 		yDiff = middleVertex.y - topVertex.y;
-		depthDiff = middleVertex.depth - topVertex.depth;
+		depthDiff = 1 / middleVertex.depth - 1 / topVertex.depth;
 		pointYDiff = point2.y - topVertex.y;
 		ratio = pointYDiff / yDiff;
-		point2.depth = topVertex.depth + ratio * depthDiff;
+		point2.depth = 1 / (1 / topVertex.depth + ratio * depthDiff);
 
 		drawLine(window, point1, point2, finalColour);
 	}
@@ -278,10 +278,10 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 		//get depth value for the point on line1
 		yDiff = bottomVertex.y - topVertex.y;
-		depthDiff = bottomVertex.depth - topVertex.depth;
+		depthDiff = 1 / bottomVertex.depth - 1 / topVertex.depth;
 		float pointYDiff = point1.y - topVertex.y;
 		ratio = pointYDiff / yDiff;
-		point1.depth = topVertex.depth + ratio * depthDiff;
+		point1.depth = 1 / (1 / topVertex.depth + ratio * depthDiff);
 
 		float x2 = bottomVertex.x + (line2XStepSize * i);
 		float y2 = bottomVertex.y + (line2YStepSize * i);
@@ -290,10 +290,10 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 
 		//get depth value for the point on line2
 		yDiff = bottomVertex.y - middleVertex.y;
-		depthDiff = bottomVertex.depth - middleVertex.depth;
+		depthDiff = 1 / bottomVertex.depth - 1 / middleVertex.depth;
 		pointYDiff = point2.y - middleVertex.y;
 		ratio = pointYDiff / yDiff;
-		point2.depth = middleVertex.depth + ratio * depthDiff;
+		point2.depth = 1 / (1 / middleVertex.depth + ratio * depthDiff);
 
 		drawLine(window, point1, point2, finalColour);
 	}
