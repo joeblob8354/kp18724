@@ -16,11 +16,12 @@
 #define HEIGHT 240
 #define pi 3.14159265358979323846 
 glm::vec3 cameraPosition(0.0, 0.0, 10.0);
-float scale = 45;
+float scale = 40;
 float focalPoint = 4;
 float depthBuffer[HEIGHT][WIDTH];
 glm::mat3 rotationMatrix(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
 glm::mat3 cameraOrientation(glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0));
+glm::vec3 rayDirection(-0.0, -0.0, -4.0);
 
 std::vector<Colour> mtlReader() {
 	std::vector<std::string> colourNames;
@@ -181,6 +182,57 @@ CanvasPoint getCanvasIntersectionPoint(glm::vec3 vertexPosition) {
 	return projectedVertex;
 }
 
+glm::vec3 getRayIntersection(ModelTriangle triangle) {
+	glm::vec3 e0 = triangle.vertices[1] - triangle.vertices[0];
+	glm::vec3 e1 = triangle.vertices[2] - triangle.vertices[0];
+	glm::vec3 SPVector = cameraPosition - triangle.vertices[0];
+	glm::mat3 DEMatrix(-rayDirection, e0, e1);
+	glm::vec3 possibleSolution = glm::inverse(DEMatrix) * SPVector;
+	return possibleSolution;
+}
+
+RayTriangleIntersection getClosestIntersection(std::vector<ModelTriangle> modelTriangles) {
+	std::vector<RayTriangleIntersection> rayTriangleIntersections;
+	for (int i = 0; i < modelTriangles.size(); i++) {
+		glm::vec3 possibleSolution = getRayIntersection(modelTriangles[i]);
+		float u = possibleSolution[1];
+		float v = possibleSolution[2];
+		float w = u + v;
+		if (u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0 && w <= 1.0 && possibleSolution[0] >= 0) {
+			RayTriangleIntersection rayTriangleIntersection;
+			rayTriangleIntersection.distanceFromCamera = possibleSolution[0];
+			rayTriangleIntersection.intersectedTriangle = modelTriangles[i];
+			rayTriangleIntersection.triangleIndex = i;
+			glm::vec3 intersectionPoint(0, 0, 0);
+			rayTriangleIntersection.intersectionPoint = intersectionPoint;
+			rayTriangleIntersections.push_back(rayTriangleIntersection);
+		}
+	}
+	RayTriangleIntersection closestTriangle;
+	closestTriangle.distanceFromCamera = INFINITY;
+	for (int i = 0; i < rayTriangleIntersections.size(); i++) {
+		if (abs(rayTriangleIntersections[i].distanceFromCamera) < abs(closestTriangle.distanceFromCamera)) {
+			closestTriangle = rayTriangleIntersections[i];
+		}
+	}
+	return closestTriangle;
+}
+
+glm::vec3 getLocationInSpace(CanvasPoint projectedVertex) {
+	projectedVertex.x = projectedVertex.x - (WIDTH / 2);
+	projectedVertex.y = projectedVertex.y - (HEIGHT / 2);
+	projectedVertex.x = projectedVertex.x / scale;
+	projectedVertex.y = projectedVertex.y / scale;
+	projectedVertex.x = -projectedVertex.x / focalPoint;
+	projectedVertex.y = projectedVertex.y / focalPoint;
+	projectedVertex.x = projectedVertex.x * -2.0;
+	projectedVertex.y = projectedVertex.y * -2.0;
+	glm::vec3 locationInSpace;
+	locationInSpace = { projectedVertex.x, projectedVertex.y, -4.0 };
+	locationInSpace = locationInSpace + cameraPosition;
+	return locationInSpace;
+}
+
 bool sortByY(CanvasPoint& lhs, CanvasPoint& rhs) {
 	return lhs.y < rhs.y;
 }
@@ -311,32 +363,59 @@ void lookAt(glm::vec3 pointToLookAt) {
 	cameraOrientation[2] = glm::normalize(cameraOrientation[2]);
 }
 
-void draw(DrawingWindow &window) {
-	for (int y = 0; y < HEIGHT; y++) {
-		for (int x = 0; x < WIDTH; x++) {
-			depthBuffer[y][x] = 0;
-		}
-	}
+void draw(DrawingWindow &window, std::string renderMethod) {
 	window.clearPixels();
 	std::vector<ModelTriangle> modelTriangles = objReader();
-	for (int i = 0; i < modelTriangles.size(); i++) {
-		CanvasTriangle triangle;
-		CanvasPoint vertex0 = getCanvasIntersectionPoint(modelTriangles[i].vertices[0]);
-		CanvasPoint vertex1 = getCanvasIntersectionPoint(modelTriangles[i].vertices[1]);
-		CanvasPoint vertex2 = getCanvasIntersectionPoint(modelTriangles[i].vertices[2]);
-		Colour colour = modelTriangles[i].colour;
-		if (colour.name == "") {
-			colour.red = 255; //rand() % 256;
-			colour.green = 255; //rand() % 256;
-			colour.blue = 255; //rand() % 256;
+
+	//render using rasterisation
+	if (renderMethod == "raster") {
+		//clear depth buffer
+		for (int y = 0; y < HEIGHT; y++) {
+			for (int x = 0; x < WIDTH; x++) {
+				depthBuffer[y][x] = 0;
+			}
 		}
-		triangle.vertices[0] = vertex0;
-		triangle.vertices[1] = vertex1;
-		triangle.vertices[2] = vertex2;
-		//drawStrokedTriangle(window, triangle, colour);
-		drawFilledTriangle(window, triangle, colour);
-		drawStrokedTriangle(window, triangle, colour);
+
+		for (int i = 0; i < modelTriangles.size(); i++) {
+			CanvasTriangle triangle;
+			CanvasPoint vertex0 = getCanvasIntersectionPoint(modelTriangles[i].vertices[0]);
+			CanvasPoint vertex1 = getCanvasIntersectionPoint(modelTriangles[i].vertices[1]);
+			CanvasPoint vertex2 = getCanvasIntersectionPoint(modelTriangles[i].vertices[2]);
+			Colour colour = modelTriangles[i].colour;
+			if (colour.name == "") {
+				colour.red = 255; //rand() % 256;
+				colour.green = 255; //rand() % 256;
+				colour.blue = 255; //rand() % 256;
+			}
+			triangle.vertices[0] = vertex0;
+			triangle.vertices[1] = vertex1;
+			triangle.vertices[2] = vertex2;
+			//drawStrokedTriangle(window, triangle, colour);
+			drawFilledTriangle(window, triangle, colour);
+			drawStrokedTriangle(window, triangle, colour);
+		}
 	}
+	
+	if (renderMethod == "ray") {
+		//render using ray tracing
+		for (int y = 0; y < HEIGHT; y++) {
+			for (int x = 0; x < WIDTH; x++) {
+				CanvasPoint point;
+				point.x = x;
+				point.y = y;
+				glm::vec3 locationInSpace = getLocationInSpace(point);
+				rayDirection = { locationInSpace[0], locationInSpace[1], -4.0 };
+				RayTriangleIntersection closestTriangle = getClosestIntersection(modelTriangles);
+				uint32_t colour;
+				uint32_t black = (255 << 24) + (0 << 16) + (0 << 8) + 0;
+				colour = (255 << 24) + (closestTriangle.intersectedTriangle.colour.red << 16) + (closestTriangle.intersectedTriangle.colour.green << 8) + closestTriangle.intersectedTriangle.colour.blue;
+				if (closestTriangle.intersectedTriangle.colour.red != NULL || closestTriangle.intersectedTriangle.colour.blue != NULL || closestTriangle.intersectedTriangle.colour.green != NULL) {
+					window.setPixelColour(x, y, colour);
+				}
+			}
+		}
+	}
+	
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window) {
@@ -381,7 +460,7 @@ int main(int argc, char *argv[]) {
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
-		draw(window);
+		draw(window, "ray");
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
 	}
