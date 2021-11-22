@@ -147,18 +147,16 @@ void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, uint32_t 
 	float xDiff = from.x - to.x;
 	float yDiff = from.y - to.y;
 	float depthDiff = 1 / from.depth - 1 / to.depth;
-	float numberOfSteps = std::max(abs(xDiff), abs(yDiff));
+	float numberOfSteps1 = std::max(abs(xDiff), abs(yDiff));
+	float numberOfSteps = std::max(abs(numberOfSteps1), abs(depthDiff));
 	float xStepSize = xDiff / numberOfSteps;
 	float yStepSize = yDiff / numberOfSteps;
+	float depthStepSize = depthDiff / numberOfSteps;
 
 	for (float i = 0; i < numberOfSteps; i++) {
 		float x = to.x + (xStepSize * i);
 		float y = to.y + (yStepSize * i);
-
-		float pointXDiff = x - to.x;
-		float ratio = pointXDiff / xDiff;
-		float newDepth = 1 / (abs(1 / to.depth + ratio * depthDiff));
-		
+		float newDepth = abs(1 / (1 / to.depth + (depthStepSize * i)));
 		int xi = round(x);
 		int yi = round(y);
 		if (xi < WIDTH && xi >= 0 && yi < HEIGHT && yi >= 0) {
@@ -221,12 +219,20 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	float line2YDiff = middleVertex.y - topVertex.y;
 	float numberOfSteps2 = std::max(abs(line2XDiff), abs(line2YDiff));
 
-	float numberOfSteps = std::max(abs(numberOfSteps1), abs(numberOfSteps2));
+	float numberOfSteps3 = std::max(abs(numberOfSteps1), abs(numberOfSteps2));
+
+	float line1DepthDiff = 1 / extraPoint.depth - 1 / topVertex.depth;
+	float line2DepthDiff = 1 / middleVertex.depth - 1 / topVertex.depth;
+	float numberOfSteps4 = std::max(abs(line1DepthDiff), abs(line2DepthDiff));
+
+	float numberOfSteps = std::max(abs(numberOfSteps3), abs(numberOfSteps4));
 
 	float line1XStepSize = line1XDiff / numberOfSteps;
 	float line1YStepSize = line1YDiff / numberOfSteps;
 	float line2XStepSize = line2XDiff / numberOfSteps;
 	float line2YStepSize = line2YDiff / numberOfSteps;
+	float line1DepthStepSize = line1DepthDiff / numberOfSteps;
+	float line2DepthStepSize = line2DepthDiff / numberOfSteps;
 
 	CanvasPoint point1;
 	CanvasPoint point2;
@@ -235,21 +241,13 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 		float y1 = topVertex.y + (line1YStepSize * i);
 		point1.x = x1;
 		point1.y = y1;
-
-		float pointYDiff = point1.y - topVertex.y;
-		ratio = pointYDiff / yDiff;
-		point1.depth = 1 / (1 / topVertex.depth + ratio * depthDiff);
+		point1.depth = 1 / (1 / topVertex.depth + (line1DepthStepSize * i));
 
 		float x2 = topVertex.x + (line2XStepSize * i);
 		float y2 = topVertex.y + (line2YStepSize * i);
 		point2.x = x2;
 		point2.y = y2;
-
-		yDiff = middleVertex.y - topVertex.y;
-		depthDiff = 1 / middleVertex.depth - 1 / topVertex.depth;
-		pointYDiff = point2.y - topVertex.y;
-		ratio = pointYDiff / yDiff;
-		point2.depth = 1 / (1 / topVertex.depth + ratio * depthDiff);
+		point2.depth = 1 / (1 / topVertex.depth + (line2DepthStepSize * i));
 
 		drawLine(window, point1, point2, finalColour);
 	}
@@ -263,37 +261,33 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 	line2YDiff = middleVertex.y - bottomVertex.y;
 	numberOfSteps2 = std::max(abs(line2XDiff), abs(line2YDiff));
 
-	numberOfSteps = std::max(abs(numberOfSteps1), abs(numberOfSteps2));
+	numberOfSteps3 = std::max(abs(numberOfSteps1), abs(numberOfSteps2));
+
+	line1DepthDiff = 1 / extraPoint.depth - 1 / bottomVertex.depth;
+	line2DepthDiff = 1 / middleVertex.depth - 1 / bottomVertex.depth;
+	numberOfSteps4 = std::max(abs(line1DepthDiff), abs(line2DepthDiff));
+
+	numberOfSteps = std::max(abs(numberOfSteps3), abs(numberOfSteps4));
 
 	line1XStepSize = line1XDiff / numberOfSteps;
 	line1YStepSize = line1YDiff / numberOfSteps;
 	line2XStepSize = line2XDiff / numberOfSteps;
 	line2YStepSize = line2YDiff / numberOfSteps;
+	line1DepthStepSize = line1DepthDiff / numberOfSteps;
+	line2DepthStepSize = line2DepthDiff / numberOfSteps;
 
 	for (float i = 0; i < numberOfSteps; i++) {
 		float x1 = bottomVertex.x + (line1XStepSize * i);
 		float y1 = bottomVertex.y + (line1YStepSize * i);
 		point1.x = x1;
 		point1.y = y1;
-
-		//get depth value for the point on line1
-		yDiff = bottomVertex.y - topVertex.y;
-		depthDiff = 1 / bottomVertex.depth - 1 / topVertex.depth;
-		float pointYDiff = point1.y - topVertex.y;
-		ratio = pointYDiff / yDiff;
-		point1.depth = 1 / (1 / topVertex.depth + ratio * depthDiff);
+		point1.depth = 1 / (1 / bottomVertex.depth + (line1DepthStepSize * i));
 
 		float x2 = bottomVertex.x + (line2XStepSize * i);
 		float y2 = bottomVertex.y + (line2YStepSize * i);
 		point2.x = x2;
 		point2.y = y2;
-
-		//get depth value for the point on line2
-		yDiff = bottomVertex.y - middleVertex.y;
-		depthDiff = 1 / bottomVertex.depth - 1 / middleVertex.depth;
-		pointYDiff = point2.y - middleVertex.y;
-		ratio = pointYDiff / yDiff;
-		point2.depth = 1 / (1 / middleVertex.depth + ratio * depthDiff);
+		point2.depth = 1 / (1 / bottomVertex.depth + (line2DepthStepSize * i));
 
 		drawLine(window, point1, point2, finalColour);
 	}
