@@ -22,7 +22,7 @@ float focalLength = 4;
 float depthBuffer[HEIGHT][WIDTH];
 glm::mat3 rotationMatrix(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
 glm::mat3 cameraOrientation(glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0));
-glm::vec3 lightSource(0, 0.85, 0);
+glm::vec3 lightSource(0, 0.45, 0);
 
 std::vector<Colour> mtlReader() {
 	std::vector<std::string> colourNames;
@@ -422,10 +422,22 @@ void draw(DrawingWindow &window) {
 				point.y = y;
 				glm::vec3 ray = getRayDirection(point);
 				RayTriangleIntersection rayIntersection = getClosestIntersection(cameraPosition, modelTriangles, ray, -1);
+
+				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
+				float lightIntensity = 100 / (4.0 * pi * distanceToLight * distanceToLight);
+
+				if (lightIntensity > 1) {
+					lightIntensity = round(lightIntensity);
+				}
+
+				rayIntersection.intersectedTriangle.colour.red = rayIntersection.intersectedTriangle.colour.red * lightIntensity;
+				rayIntersection.intersectedTriangle.colour.green = rayIntersection.intersectedTriangle.colour.green * lightIntensity;
+				rayIntersection.intersectedTriangle.colour.blue = rayIntersection.intersectedTriangle.colour.blue * lightIntensity;
+				uint32_t colour = (255 << 24) + (rayIntersection.intersectedTriangle.colour.red << 16) + (rayIntersection.intersectedTriangle.colour.green << 8) + rayIntersection.intersectedTriangle.colour.blue;
+
 				ray = lightSource - rayIntersection.intersectionPoint;
 				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex);
-				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
-				uint32_t colour = (255 << 24) + (rayIntersection.intersectedTriangle.colour.red << 16) + (rayIntersection.intersectedTriangle.colour.green << 8) + rayIntersection.intersectedTriangle.colour.blue;
+				
 				if (closestIntersect.distanceFromCamera < distanceToLight) {
 					colour = (255 << 24) + (0 << 16) + (0 << 8) + 0;
 				}
@@ -434,16 +446,28 @@ void draw(DrawingWindow &window) {
 				}
 			}
 		}
+		CanvasPoint light;
+		light = getCanvasIntersectionPoint(lightSource);
+		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
+		window.setPixelColour(light.x, light.y, lightColour);
 	}
 	
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
-		if (event.key.keysym.sym == SDLK_LEFT) std::cout << "LEFT" << std::endl;
-		else if (event.key.keysym.sym == SDLK_RIGHT) std::cout << "RIGHT" << std::endl;
-		else if (event.key.keysym.sym == SDLK_UP) std::cout << "UP" << std::endl;
-		else if (event.key.keysym.sym == SDLK_DOWN) std::cout << "DOWN" << std::endl;
+		if (event.key.keysym.sym == SDLK_LEFT) {
+			lightSource = { lightSource[0] - 0.1, lightSource[1], lightSource[2] };
+		}
+		else if (event.key.keysym.sym == SDLK_RIGHT) {
+			lightSource = { lightSource[0] + 0.1, lightSource[1], lightSource[2] };
+		}
+		else if (event.key.keysym.sym == SDLK_UP) {
+			lightSource = { lightSource[0], lightSource[1] + 0.1, lightSource[2] };
+		}
+		else if (event.key.keysym.sym == SDLK_DOWN) {
+			lightSource = { lightSource[0], lightSource[1] - 0.1, lightSource[2] };
+		}
 		else if (event.key.keysym.sym == SDLK_PERIOD) {
 			cameraPosition[2] = cameraPosition[2] - 1;
 			lookAt(glm::vec3(0, 0, 0));
