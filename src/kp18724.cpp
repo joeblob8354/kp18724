@@ -440,16 +440,19 @@ void draw(DrawingWindow &window) {
 				glm::vec3 ray = getRayDirection(point);
 				RayTriangleIntersection rayIntersection = getClosestIntersection(cameraPosition, modelTriangles, ray, -1);
 
+				//light intensity
 				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
 				float lightIntensity = 100 / (4.0 * pi * distanceToLight * distanceToLight);
 				lightIntensity = clamp(lightIntensity);
 
+				//AOI
 				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
 				lightDirection = glm::normalize(lightDirection);
 				glm::vec3 normal = glm::normalize(rayIntersection.intersectedTriangle.normal);
 				float AOI = glm::dot(lightDirection, normal);
 				AOI = clamp(AOI);
-
+				
+				//specular
 				glm::vec3 Ri = rayIntersection.intersectionPoint - lightSource;
 				Ri = glm::normalize(Ri);
 				glm::vec3 view = cameraPosition - rayIntersection.intersectionPoint;
@@ -461,17 +464,24 @@ void draw(DrawingWindow &window) {
 
 				float brightnessModifier = lightIntensity * 0.5 + AOI * 0.3 + specular * 0.2;
 
-				rayIntersection.intersectedTriangle.colour.red = rayIntersection.intersectedTriangle.colour.red * brightnessModifier;
-				rayIntersection.intersectedTriangle.colour.green = rayIntersection.intersectedTriangle.colour.green * brightnessModifier;
-				rayIntersection.intersectedTriangle.colour.blue = rayIntersection.intersectedTriangle.colour.blue * brightnessModifier;
-				uint32_t colour = (255 << 24) + (rayIntersection.intersectedTriangle.colour.red << 16) + (rayIntersection.intersectedTriangle.colour.green << 8) + rayIntersection.intersectedTriangle.colour.blue;
-
 				ray = lightSource - rayIntersection.intersectionPoint;
 				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex);
-				
+
+				//shadows
 				if (closestIntersect.distanceFromCamera < distanceToLight) {
-					colour = (255 << 24) + (0 << 16) + (0 << 8) + 0;
+					brightnessModifier = 0.2;
 				}
+
+				//ambient
+				if (brightnessModifier < 0.3) {
+					brightnessModifier = 0.3;
+				}
+
+				int red = rayIntersection.intersectedTriangle.colour.red = rayIntersection.intersectedTriangle.colour.red * brightnessModifier;
+				int green = rayIntersection.intersectedTriangle.colour.green = rayIntersection.intersectedTriangle.colour.green * brightnessModifier;
+				int blue = rayIntersection.intersectedTriangle.colour.blue = rayIntersection.intersectedTriangle.colour.blue * brightnessModifier;
+				uint32_t colour = (255 << 24) + (red << 16) + (green << 8) + blue;
+				
 				if (rayIntersection.intersectedTriangle.colour.red != NULL || rayIntersection.intersectedTriangle.colour.green != NULL || rayIntersection.intersectedTriangle.colour.blue != NULL) {
 					window.setPixelColour(x, y, colour);
 				}
