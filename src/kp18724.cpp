@@ -140,8 +140,10 @@ std::vector<ModelTriangle> objReader() {
 	std::vector<glm::vec3> objectVertices = vertexTranslator(faceVertices, vertices);
 	std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette);
 	for (int i = 0; i < objectTriangles.size(); i++) {
-		objectTriangles[i].normal = glm::cross((objectTriangles[i].vertices[1] - objectTriangles[i].vertices[0]), (objectTriangles[i].vertices[2] - objectTriangles[i].vertices[0]));
 		finalTriangles.push_back(objectTriangles[i]);
+	}
+	for (int i = 0; i < finalTriangles.size(); i++) {
+		finalTriangles[i].normal = glm::cross((finalTriangles[i].vertices[1] - finalTriangles[i].vertices[0]), (finalTriangles[i].vertices[2] - finalTriangles[i].vertices[0]));
 	}
 	return finalTriangles;
 }
@@ -365,7 +367,7 @@ void lookAt(glm::vec3 pointToLookAt) {
 	cameraOrientation[2] = glm::normalize(cameraOrientation[2]);
 }
 
-float normalizeIntensity(float intensity) {
+float normalize01(float intensity) {
 	if (intensity > 1) {
 		intensity = 1;
 	}
@@ -436,9 +438,10 @@ void draw(DrawingWindow &window) {
 
 				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
 				float lightIntensity = 100 / (4.0 * pi * distanceToLight * distanceToLight);
-				lightIntensity = normalizeIntensity(lightIntensity);
+				lightIntensity = normalize01(lightIntensity);
 				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
 				float AOI = glm::dot(lightDirection, rayIntersection.intersectedTriangle.normal);
+				AOI = normalize01(AOI / 100);
 				float brightnessModifier = AOI * 0.3 + lightIntensity * 0.7;
 
 				rayIntersection.intersectedTriangle.colour.red = rayIntersection.intersectedTriangle.colour.red * brightnessModifier;
