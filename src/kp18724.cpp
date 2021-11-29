@@ -140,6 +140,7 @@ std::vector<ModelTriangle> objReader() {
 	std::vector<glm::vec3> objectVertices = vertexTranslator(faceVertices, vertices);
 	std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette);
 	for (int i = 0; i < objectTriangles.size(); i++) {
+		objectTriangles[i].normal = glm::cross((objectTriangles[i].vertices[1] - objectTriangles[i].vertices[0]), (objectTriangles[i].vertices[2] - objectTriangles[i].vertices[0]));
 		finalTriangles.push_back(objectTriangles[i]);
 	}
 	return finalTriangles;
@@ -364,6 +365,16 @@ void lookAt(glm::vec3 pointToLookAt) {
 	cameraOrientation[2] = glm::normalize(cameraOrientation[2]);
 }
 
+float normalizeIntensity(float intensity) {
+	if (intensity > 1) {
+		intensity = 1;
+	}
+	if (intensity < 0) {
+		intensity = 0;
+	}
+	return intensity;
+}
+
 void draw(DrawingWindow &window) {
 	window.clearPixels();
 	std::vector<ModelTriangle> modelTriangles = objReader();
@@ -425,14 +436,14 @@ void draw(DrawingWindow &window) {
 
 				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
 				float lightIntensity = 100 / (4.0 * pi * distanceToLight * distanceToLight);
+				lightIntensity = normalizeIntensity(lightIntensity);
+				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
+				float AOI = glm::dot(lightDirection, rayIntersection.intersectedTriangle.normal);
+				float brightnessModifier = AOI * 0.3 + lightIntensity * 0.7;
 
-				if (lightIntensity > 1) {
-					lightIntensity = round(lightIntensity);
-				}
-
-				rayIntersection.intersectedTriangle.colour.red = rayIntersection.intersectedTriangle.colour.red * lightIntensity;
-				rayIntersection.intersectedTriangle.colour.green = rayIntersection.intersectedTriangle.colour.green * lightIntensity;
-				rayIntersection.intersectedTriangle.colour.blue = rayIntersection.intersectedTriangle.colour.blue * lightIntensity;
+				rayIntersection.intersectedTriangle.colour.red = rayIntersection.intersectedTriangle.colour.red * brightnessModifier;
+				rayIntersection.intersectedTriangle.colour.green = rayIntersection.intersectedTriangle.colour.green * brightnessModifier;
+				rayIntersection.intersectedTriangle.colour.blue = rayIntersection.intersectedTriangle.colour.blue * brightnessModifier;
 				uint32_t colour = (255 << 24) + (rayIntersection.intersectedTriangle.colour.red << 16) + (rayIntersection.intersectedTriangle.colour.green << 8) + rayIntersection.intersectedTriangle.colour.blue;
 
 				ray = lightSource - rayIntersection.intersectionPoint;
