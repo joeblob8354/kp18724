@@ -15,7 +15,7 @@
 #define WIDTH 320
 #define HEIGHT 240
 #define pi 3.14159265358979323846 
-std::string renderMethod = "ray";
+std::string renderMethod = "raster";
 glm::vec3 cameraPosition(0.0, 0.0, 10.0);
 float scale = 65;
 float focalLength = 4;
@@ -367,7 +367,7 @@ void lookAt(glm::vec3 pointToLookAt) {
 	cameraOrientation[2] = glm::normalize(cameraOrientation[2]);
 }
 
-float normalize01(float intensity) {
+float clamp(float intensity) {
 	if (intensity > 1) {
 		intensity = 1;
 	}
@@ -424,6 +424,10 @@ void draw(DrawingWindow &window) {
 			drawFilledTriangle(window, triangle, colour);
 			drawStrokedTriangle(window, triangle, colour);
 		}
+		CanvasPoint light;
+		light = getCanvasIntersectionPoint(lightSource);
+		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
+		window.setPixelColour(light.x, light.y, lightColour);
 	}
 	
 	//render using ray tracing
@@ -438,11 +442,24 @@ void draw(DrawingWindow &window) {
 
 				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
 				float lightIntensity = 100 / (4.0 * pi * distanceToLight * distanceToLight);
-				lightIntensity = normalize01(lightIntensity);
+				lightIntensity = clamp(lightIntensity);
+
 				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
-				float AOI = glm::dot(lightDirection, rayIntersection.intersectedTriangle.normal);
-				AOI = normalize01(AOI / 100);
-				float brightnessModifier = AOI * 0.3 + lightIntensity * 0.7;
+				lightDirection = glm::normalize(lightDirection);
+				glm::vec3 normal = glm::normalize(rayIntersection.intersectedTriangle.normal);
+				float AOI = glm::dot(lightDirection, normal);
+				AOI = clamp(AOI);
+
+				glm::vec3 Ri = rayIntersection.intersectionPoint - lightSource;
+				Ri = glm::normalize(Ri);
+				glm::vec3 view = cameraPosition - rayIntersection.intersectionPoint;
+				view = glm::normalize(view);
+				glm::vec3 Rr = Ri - (normal * 2.0f) * glm::dot(Ri, normal);
+				Rr = glm::normalize(Rr);
+				float specular = pow(glm::dot(Rr, view), 256.0);
+				specular = clamp(specular);
+
+				float brightnessModifier = lightIntensity * 0.5 + AOI * 0.3 + specular * 0.2;
 
 				rayIntersection.intersectedTriangle.colour.red = rayIntersection.intersectedTriangle.colour.red * brightnessModifier;
 				rayIntersection.intersectedTriangle.colour.green = rayIntersection.intersectedTriangle.colour.green * brightnessModifier;
