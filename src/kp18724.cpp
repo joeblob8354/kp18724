@@ -62,9 +62,11 @@ std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> vertexTranslator(std::
 		for (unsigned int i = 0; i < faceVertices.size(); i++) {
 			//get position of the vertex since obj indexes from 1
 			glm::vec3 vertex = vertices[faceVertices[i] - 1];
-			glm::vec3 vertexNormal = vertexNormals[faceVertexNormals[i] - 1];
+			if (vertexNormals.size() > 0) {
+				glm::vec3 vertexNormal = vertexNormals[faceVertexNormals[i] - 1];
+				outputVertexNormals.push_back(vertexNormal);
+			}
 			outputVertices.push_back(vertex);
-			outputVertexNormals.push_back(vertexNormal);
 		}
 	}
 	std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> res = { outputVertices, outputVertexNormals };
@@ -85,9 +87,11 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 			myTriangle.vertices[0] = vertices[i];
 			myTriangle.vertices[1] = vertices[i1];
 			myTriangle.vertices[2] = vertices[i2];
-			myTriangle.v0Normal = vertexNormals[i];
-			myTriangle.v1Normal = vertexNormals[i1];
-			myTriangle.v2Normal = vertexNormals[i2];
+			if (vertexNormals.size() > 0) {
+				myTriangle.v0Normal = vertexNormals[i];
+				myTriangle.v1Normal = vertexNormals[i1];
+				myTriangle.v2Normal = vertexNormals[i2];
+			}
 			for (int y = 0; y < palette.size(); y++) {
 				if (palette[y].name == colour) {
 					myTriangle.colour = palette[y];
@@ -155,10 +159,12 @@ std::vector<ModelTriangle> objReader() {
 				std::vector<std::string> tokenVertices = split(tokens[i], '/');
 				vertex = stof(tokenVertices[0]);
 				vertices[i - 1] = vertex;
-				vertexNormal = stof(tokenVertices[2]);
-				vertexNormals[i - 1] = vertexNormal;
+				if (tokenVertices.size() >= 3) {
+					vertexNormal = stof(tokenVertices[2]);
+					vertexNormals[i - 1] = vertexNormal;
+					faceVerticeNormals.push_back(vertexNormals[i - 1]);
+				}
 				faceVertices.push_back(vertices[i - 1]);
-				faceVerticeNormals.push_back(vertexNormals[i - 1]);
 			}
 		}
 	}
@@ -482,16 +488,31 @@ void draw(DrawingWindow &window) {
 				float v = (glm::length(glm::cross((triangle.vertices[1] - triangle.vertices[0]), (rayIntersection.intersectionPoint - triangle.vertices[0]))) / 2) / triangleArea;
 				float w = 1 - u - v;
 
+				glm::vec3 v0normal = glm::normalize(triangle.v0Normal);
+				glm::vec3 v1normal = glm::normalize(triangle.v1Normal);
+				glm::vec3 v2normal = glm::normalize(triangle.v2Normal);
+				glm::vec3 pointNormal = w * v0normal + u * v1normal + v * v2normal;
+
 				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
+				float AOI = clamp(glm::dot(lightDirection, pointNormal));
+
+				glm::vec3 Ri = glm::normalize(rayIntersection.intersectionPoint - lightSource);
+				glm::vec3 view = glm::normalize(cameraPosition - rayIntersection.intersectionPoint);
+				glm::vec3 Rr = glm::normalize(Ri - (pointNormal * 2.0f) * glm::dot(Ri, pointNormal));
+				float specular = clamp(pow(glm::dot(Rr, view), 256));
+
+				//gouraud AOI
+				/*glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
 				lightDirection = glm::normalize(lightDirection);
 				glm::vec3 v0normal = glm::normalize(triangle.v0Normal);
 				glm::vec3 v1normal = glm::normalize(triangle.v1Normal);
 				glm::vec3 v2normal = glm::normalize(triangle.v2Normal);
-				float v0AOI = clamp(glm::dot(lightDirection, v0normal));
-				float v1AOI = clamp(glm::dot(lightDirection, v1normal));
-				float v2AOI = clamp(glm::dot(lightDirection, v2normal));
-				float AOI = w * v0AOI + u * v1AOI + v * v2AOI;
+				float v0AOI = glm::dot(lightDirection, v0normal);
+				float v1AOI = glm::dot(lightDirection, v1normal);
+				float v2AOI = glm::dot(lightDirection, v2normal);
+				float AOI = clamp(w * v0AOI + u * v1AOI + v * v2AOI);
 
+				//gouraud specular
 				glm::vec3 Ri = rayIntersection.intersectionPoint - lightSource;
 				Ri = glm::normalize(Ri);
 				glm::vec3 view = cameraPosition - rayIntersection.intersectionPoint;
@@ -499,13 +520,13 @@ void draw(DrawingWindow &window) {
 				glm::vec3 v0Rr = glm::normalize(Ri - (triangle.v0Normal * 2.0f) * glm::dot(Ri, triangle.v0Normal));
 				glm::vec3 v1Rr = glm::normalize(Ri - (triangle.v1Normal * 2.0f) * glm::dot(Ri, triangle.v1Normal));
 				glm::vec3 v2Rr = glm::normalize(Ri - (triangle.v2Normal * 2.0f) * glm::dot(Ri, triangle.v2Normal));
-				float v0Specular = clamp(pow(glm::dot(v0Rr, view), 256));
-				float v1Specular = clamp(pow(glm::dot(v1Rr, view), 256));
-				float v2Specular = clamp(pow(glm::dot(v2Rr, view), 256));
-				float specular = w * v0Specular + u * v1Specular + v * v2Specular;
+				float v0Specular = pow(glm::dot(v0Rr, view), 256);
+				float v1Specular = pow(glm::dot(v1Rr, view), 256);
+				float v2Specular = pow(glm::dot(v2Rr, view), 256);
+				float specular = clamp(w * v0Specular + u * v1Specular + v * v2Specular);*/
 
-				//glm::vec3 normal = glm::normalize(triangle.normal);
 				/*//AOI
+				glm::vec3 normal = glm::normalize(triangle.normal);
 				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
 				lightDirection = glm::normalize(lightDirection);
 				
@@ -522,7 +543,7 @@ void draw(DrawingWindow &window) {
 				float specular = pow(glm::dot(Rr, view), 256.0);
 				specular = clamp(specular);*/
 
-				float brightnessModifier = lightIntensity * 0.4 + AOI * 0.2 + specular * 0.4;
+				float brightnessModifier = lightIntensity * 0.5 + AOI * 0.2 + specular * 0.3;
 
 				ray = lightSource - rayIntersection.intersectionPoint;
 				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex);
@@ -537,9 +558,9 @@ void draw(DrawingWindow &window) {
 					brightnessModifier = 0.3;
 				}
 
-				int red = rayIntersection.intersectedTriangle.colour.red = rayIntersection.intersectedTriangle.colour.red * brightnessModifier;
-				int green = rayIntersection.intersectedTriangle.colour.green = rayIntersection.intersectedTriangle.colour.green * brightnessModifier;
-				int blue = rayIntersection.intersectedTriangle.colour.blue = rayIntersection.intersectedTriangle.colour.blue * brightnessModifier;
+				int red = triangle.colour.red = triangle.colour.red * brightnessModifier;
+				int green = triangle.colour.green = triangle.colour.green * brightnessModifier;
+				int blue = triangle.colour.blue = triangle.colour.blue * brightnessModifier;
 				uint32_t colour = (255 << 24) + (red << 16) + (green << 8) + blue;
 				
 				if (rayIntersection.intersectedTriangle.colour.red != NULL || rayIntersection.intersectedTriangle.colour.green != NULL || rayIntersection.intersectedTriangle.colour.blue != NULL) {
