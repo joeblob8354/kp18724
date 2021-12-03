@@ -11,6 +11,9 @@ struct ModelTriangle {
 	std::array<TexturePoint, 3> texturePoints{};
 	Colour colour{};
 	glm::vec3 normal{};
+	glm::vec3 v0Normal{};
+	glm::vec3 v1Normal{};
+	glm::vec3 v2Normal{};
 
 	ModelTriangle();
 	ModelTriangle(const glm::vec3 &v0, const glm::vec3 &v1, const glm::vec3 &v2, Colour trigColour);

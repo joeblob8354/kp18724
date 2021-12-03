@@ -17,7 +17,7 @@
 #define pi 3.14159265358979323846 
 std::string renderMethod = "raster";
 glm::vec3 cameraPosition(0.0, 0.0, 10.0);
-float scale = 65;
+float scale = 100;
 float focalLength = 4;
 float depthBuffer[HEIGHT][WIDTH];
 glm::mat3 rotationMatrix(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
@@ -54,25 +54,29 @@ std::vector<Colour> mtlReader() {
 	return palette;
 }
 
-std::vector<glm::vec3> vertexTranslator(std::vector<unsigned int> faceVertices, std::vector<glm::vec3> vertices) {
+std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> vertexTranslator(std::vector<unsigned int> faceVertices, std::vector<glm::vec3> vertices, std::vector<unsigned int> faceVertexNormals, std::vector<glm::vec3> vertexNormals) {
 	std::vector<glm::vec3> outputVertices;
+	std::vector<glm::vec3> outputVertexNormals;
 	//loop through each vertex of each triangle (f lines)
 	if (faceVertices.size() != 0) {
 		for (unsigned int i = 0; i < faceVertices.size(); i++) {
 			//get position of the vertex since obj indexes from 1
 			glm::vec3 vertex = vertices[faceVertices[i] - 1];
+			glm::vec3 vertexNormal = vertexNormals[faceVertexNormals[i] - 1];
 			outputVertices.push_back(vertex);
+			outputVertexNormals.push_back(vertexNormal);
 		}
 	}
-	return outputVertices;
+	std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> res = { outputVertices, outputVertexNormals };
+	return res;
 }
 
-std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, std::string colour, std::vector<Colour> palette) {
+std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, std::string colour, std::vector<Colour> palette, std::vector<glm::vec3> vertexNormals) {
 	std::vector<ModelTriangle> modelTriangles;
 	Colour white;
 	white.red = 255;
-	white.green = 255;
-	white.blue = 255;
+	white.green = 0;
+	white.blue = 0;
 	if (vertices.size() != 0) {
 		for (int i = 0; i < vertices.size(); i += 3) {
 			int i1 = i + 1;
@@ -81,12 +85,15 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 			myTriangle.vertices[0] = vertices[i];
 			myTriangle.vertices[1] = vertices[i1];
 			myTriangle.vertices[2] = vertices[i2];
+			myTriangle.v0Normal = vertexNormals[i];
+			myTriangle.v1Normal = vertexNormals[i1];
+			myTriangle.v2Normal = vertexNormals[i2];
 			for (int y = 0; y < palette.size(); y++) {
 				if (palette[y].name == colour) {
 					myTriangle.colour = palette[y];
 				}
 			}
-			if (myTriangle.colour.name != colour) {
+			if (palette.size() == 0) {
 				myTriangle.colour = white;
 			}
 			modelTriangles.push_back(myTriangle);
@@ -98,18 +105,24 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 std::vector<ModelTriangle> objReader() {
 	std::string objectName;
 	std::string objectColour;
-	std::vector<Colour> palette = mtlReader();
+	std::vector<Colour> palette = {}; //mtlReader();
 	std::vector<glm::vec3> vertices;
+	std::vector<glm::vec3> vertexNormals;
 	std::vector<unsigned int> faceVertices;
+	std::vector<unsigned int> faceVerticeNormals;
 	std::vector<ModelTriangle> finalTriangles;
 
-	std::ifstream file("cornell-box.obj");
+	std::ifstream file("sphere.obj");
 	std::string line;
 	for (line; std::getline(file, line);) {
 		std::vector<std::string> tokens = split(line, ' ');
 		if (tokens[0] == "o") {
-			std::vector<glm::vec3> objectVertices = vertexTranslator(faceVertices, vertices);
-			std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette);
+			std::vector<glm::vec3> objectVertices;
+			std::vector<glm::vec3> objectVertexNormals;
+			std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> res = vertexTranslator(faceVertices, vertices, faceVerticeNormals, vertexNormals);
+			objectVertices = res.first;
+			objectVertexNormals = res.second;
+			std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette, objectVertexNormals);
 			for (int i = 0; i < objectTriangles.size(); i++) {
 				finalTriangles.push_back(objectTriangles[i]);
 			}
@@ -126,19 +139,35 @@ std::vector<ModelTriangle> objReader() {
 			}
 			vertices.push_back(vertex);
 		}
+		else if (tokens[0] == "vn") {
+			glm::vec3 vertexNormal;
+			for (int i = 1; i < tokens.size(); i++) {
+				vertexNormal[i - 1] = stof(tokens[i]);
+			}
+			vertexNormals.push_back(vertexNormal);
+		}
 		else if (tokens[0] == "f") {
 			glm::vec3 vertices;
 			float vertex;
+			glm::vec3 vertexNormals;
+			float vertexNormal;
 			for (int i = 1; i < tokens.size(); i++) {
 				std::vector<std::string> tokenVertices = split(tokens[i], '/');
 				vertex = stof(tokenVertices[0]);
 				vertices[i - 1] = vertex;
+				vertexNormal = stof(tokenVertices[2]);
+				vertexNormals[i - 1] = vertexNormal;
 				faceVertices.push_back(vertices[i - 1]);
+				faceVerticeNormals.push_back(vertexNormals[i - 1]);
 			}
 		}
 	}
-	std::vector<glm::vec3> objectVertices = vertexTranslator(faceVertices, vertices);
-	std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette);
+	std::vector<glm::vec3> objectVertices;
+	std::vector<glm::vec3> objectVertexNormals;
+	std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> res = vertexTranslator(faceVertices, vertices, faceVerticeNormals, vertexNormals);
+	objectVertices = res.first;
+	objectVertexNormals = res.second;
+	std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette, objectVertexNormals);
 	for (int i = 0; i < objectTriangles.size(); i++) {
 		finalTriangles.push_back(objectTriangles[i]);
 	}
@@ -445,10 +474,41 @@ void draw(DrawingWindow &window) {
 				float lightIntensity = 100 / (4.0 * pi * distanceToLight * distanceToLight);
 				lightIntensity = clamp(lightIntensity);
 
-				//AOI
+				ModelTriangle triangle = rayIntersection.intersectedTriangle;
+
+				//calculating barycentric coords
+				float triangleArea = glm::length(glm::cross((triangle.vertices[1] - triangle.vertices[0]), (triangle.vertices[2] - triangle.vertices[0]))) / 2;
+				float u = (glm::length(glm::cross((triangle.vertices[0] - triangle.vertices[2]), (rayIntersection.intersectionPoint - triangle.vertices[2]))) / 2) / triangleArea;
+				float v = (glm::length(glm::cross((triangle.vertices[1] - triangle.vertices[0]), (rayIntersection.intersectionPoint - triangle.vertices[0]))) / 2) / triangleArea;
+				float w = 1 - u - v;
+
 				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
 				lightDirection = glm::normalize(lightDirection);
-				glm::vec3 normal = glm::normalize(rayIntersection.intersectedTriangle.normal);
+				glm::vec3 v0normal = glm::normalize(triangle.v0Normal);
+				glm::vec3 v1normal = glm::normalize(triangle.v1Normal);
+				glm::vec3 v2normal = glm::normalize(triangle.v2Normal);
+				float v0AOI = clamp(glm::dot(lightDirection, v0normal));
+				float v1AOI = clamp(glm::dot(lightDirection, v1normal));
+				float v2AOI = clamp(glm::dot(lightDirection, v2normal));
+				float AOI = w * v0AOI + u * v1AOI + v * v2AOI;
+
+				glm::vec3 Ri = rayIntersection.intersectionPoint - lightSource;
+				Ri = glm::normalize(Ri);
+				glm::vec3 view = cameraPosition - rayIntersection.intersectionPoint;
+				view = glm::normalize(view);
+				glm::vec3 v0Rr = glm::normalize(Ri - (triangle.v0Normal * 2.0f) * glm::dot(Ri, triangle.v0Normal));
+				glm::vec3 v1Rr = glm::normalize(Ri - (triangle.v1Normal * 2.0f) * glm::dot(Ri, triangle.v1Normal));
+				glm::vec3 v2Rr = glm::normalize(Ri - (triangle.v2Normal * 2.0f) * glm::dot(Ri, triangle.v2Normal));
+				float v0Specular = clamp(pow(glm::dot(v0Rr, view), 256));
+				float v1Specular = clamp(pow(glm::dot(v1Rr, view), 256));
+				float v2Specular = clamp(pow(glm::dot(v2Rr, view), 256));
+				float specular = w * v0Specular + u * v1Specular + v * v2Specular;
+
+				//glm::vec3 normal = glm::normalize(triangle.normal);
+				/*//AOI
+				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
+				lightDirection = glm::normalize(lightDirection);
+				
 				float AOI = glm::dot(lightDirection, normal);
 				AOI = clamp(AOI);
 				
@@ -460,9 +520,9 @@ void draw(DrawingWindow &window) {
 				glm::vec3 Rr = Ri - (normal * 2.0f) * glm::dot(Ri, normal);
 				Rr = glm::normalize(Rr);
 				float specular = pow(glm::dot(Rr, view), 256.0);
-				specular = clamp(specular);
+				specular = clamp(specular);*/
 
-				float brightnessModifier = lightIntensity * 0.5 + AOI * 0.3 + specular * 0.2;
+				float brightnessModifier = lightIntensity * 0.4 + AOI * 0.2 + specular * 0.4;
 
 				ray = lightSource - rayIntersection.intersectionPoint;
 				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex);
@@ -497,25 +557,53 @@ void draw(DrawingWindow &window) {
 
 void handleEvent(SDL_Event event, DrawingWindow &window) {
 	if (event.type == SDL_KEYDOWN) {
+		//move light left
 		if (event.key.keysym.sym == SDLK_LEFT) {
 			lightSource = { lightSource[0] - 0.1, lightSource[1], lightSource[2] };
 		}
+		//move light right
 		else if (event.key.keysym.sym == SDLK_RIGHT) {
 			lightSource = { lightSource[0] + 0.1, lightSource[1], lightSource[2] };
 		}
+		//move light up
 		else if (event.key.keysym.sym == SDLK_UP) {
 			lightSource = { lightSource[0], lightSource[1] + 0.1, lightSource[2] };
 		}
+		//move light down
 		else if (event.key.keysym.sym == SDLK_DOWN) {
 			lightSource = { lightSource[0], lightSource[1] - 0.1, lightSource[2] };
 		}
+		//move light out
+		else if (event.key.keysym.sym == SDLK_SPACE) {
+			lightSource = { lightSource[0], lightSource[1], lightSource[2] + 0.1 };
+		}
+		//movr light in
+		else if (event.key.keysym.sym == SDLK_LSHIFT) {
+			lightSource = { lightSource[0], lightSource[1], lightSource[2] - 0.1 };
+		}
+		//move camera up
+		else if (event.key.keysym.sym == SDLK_w) {
+			cameraPosition = { cameraPosition[0] , cameraPosition[1] + 0.1, cameraPosition[2] };
+		}
+		//move camera down
+		else if (event.key.keysym.sym == SDLK_s) {
+			cameraPosition = { cameraPosition[0], cameraPosition[1] - 0.1, cameraPosition[2] };
+		}
+		//move camera left
+		else if (event.key.keysym.sym == SDLK_a) {
+			cameraPosition = { cameraPosition[0] - 0.1 , cameraPosition[1], cameraPosition[2] };
+		}
+		//move camera right
+		else if (event.key.keysym.sym == SDLK_d) {
+			cameraPosition = { cameraPosition[0] + 0.1, cameraPosition[1], cameraPosition[2] };
+		}
+		//move camera in
 		else if (event.key.keysym.sym == SDLK_PERIOD) {
 			cameraPosition[2] = cameraPosition[2] - 1;
-			lookAt(glm::vec3(0, 0, 0));
 		}
+		//move camera out
 		else if (event.key.keysym.sym == SDLK_COMMA) {
 			cameraPosition[2] = cameraPosition[2] + 1;
-			lookAt(glm::vec3(0, 0, 0));
 		}
 		//rotate + about x-axis
 		else if (event.key.keysym.sym == SDLK_RIGHTBRACKET) {
@@ -541,13 +629,16 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 			cameraPosition = rotationMatrix * cameraPosition;
 			lookAt(glm::vec3(0, 0, 0));
 		}
+		//render using rasterising
 		else if (event.key.keysym.sym == SDLK_r) {
 			renderMethod = "raster";
 		}
+		//render using ray tracing
 		else if (event.key.keysym.sym == SDLK_t) {
 			renderMethod = "ray";
 		}
-		else if (event.key.keysym.sym == SDLK_w) {
+		//render wireframe
+		else if (event.key.keysym.sym == SDLK_e) {
 			renderMethod = "wire";
 		}
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
