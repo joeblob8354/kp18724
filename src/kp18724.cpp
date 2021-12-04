@@ -16,19 +16,22 @@
 #define HEIGHT 240
 #define pi 3.14159265358979323846 
 std::string renderMethod = "raster";
+bool texture = false;
+std::string textureName = "cobbles.ppm";
 glm::vec3 cameraPosition(0.0, 0.0, 10.0);
-float scale = 100;
+float scale = 75;
 float focalLength = 4;
 float depthBuffer[HEIGHT][WIDTH];
 glm::mat3 rotationMatrix(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
 glm::mat3 cameraOrientation(glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0));
 glm::vec3 lightSource(0, 0.45, 0);
 
-std::vector<Colour> mtlReader() {
+std::pair <std::vector<Colour>, std::vector<TextureMap>> mtlReader() {
 	std::vector<std::string> colourNames;
 	std::vector<Colour> palette;
+	std::vector<TextureMap> texturePalette;
 
-	std::ifstream file("cornell-box.mtl");
+	std::ifstream file("textured-cornell-box.mtl");
 	std::string line;
 	for (line; std::getline(file, line);) {
 		std::vector<std::string> tokens = split(line, ' ');
@@ -46,12 +49,23 @@ std::vector<Colour> mtlReader() {
 			myColour.blue = round(blue * 255);
 			palette.push_back(myColour);
 		}
+		else if (tokens[0] == "map_Kd") {
+			std::string filename = tokens[1];
+			TextureMap texture(filename);
+			texturePalette.push_back(texture);
+		}
 	}
 
 	for (int i = 0; i < palette.size(); i++) {
 		palette[i].name = colourNames[i];
 	}
-	return palette;
+	for (int i = 0; i < texturePalette.size(); i++) {
+		texturePalette[i].name = colourNames[i];
+	}
+	std::pair<std::vector<Colour>, std::vector<TextureMap>> res;
+	res.first = palette;
+	res.second = texturePalette;
+	return res;
 }
 
 std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> vertexTranslator(std::vector<unsigned int> faceVertices, std::vector<glm::vec3> vertices, std::vector<unsigned int> faceVertexNormals, std::vector<glm::vec3> vertexNormals) {
@@ -73,12 +87,23 @@ std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> vertexTranslator(std::
 	return res;
 }
 
-std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, std::string colour, std::vector<Colour> palette, std::vector<glm::vec3> vertexNormals) {
+std::vector<TexturePoint> textureTranslator(std::vector<unsigned int> texturePointIndexes, std::vector<TexturePoint> texturePoints) {
+	std::vector<TexturePoint> outputTexturePoints;
+	//loop through each vertex of each triangle (f lines)
+	for (unsigned int i = 0; i < texturePointIndexes.size(); i++) {
+		//get position of the vertex since obj indexes from 1
+		TexturePoint texturePoint = texturePoints[texturePointIndexes[i] - 1];
+		outputTexturePoints.push_back(texturePoint);
+	}
+	return outputTexturePoints;
+}
+
+std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, std::string colour, std::vector<Colour> palette, std::vector<TextureMap> texturePalette, std::vector<TexturePoint> texturePoints, std::vector<glm::vec3> vertexNormals) {
 	std::vector<ModelTriangle> modelTriangles;
-	Colour white;
-	white.red = 255;
-	white.green = 0;
-	white.blue = 0;
+	Colour red;
+	red.red = 255;
+	red.green = 0;
+	red.blue = 0;
 	if (vertices.size() != 0) {
 		for (int i = 0; i < vertices.size(); i += 3) {
 			int i1 = i + 1;
@@ -87,18 +112,29 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 			myTriangle.vertices[0] = vertices[i];
 			myTriangle.vertices[1] = vertices[i1];
 			myTriangle.vertices[2] = vertices[i2];
-			if (vertexNormals.size() > 0) {
-				myTriangle.v0Normal = vertexNormals[i];
-				myTriangle.v1Normal = vertexNormals[i1];
-				myTriangle.v2Normal = vertexNormals[i2];
-			}
 			for (int y = 0; y < palette.size(); y++) {
 				if (palette[y].name == colour) {
 					myTriangle.colour = palette[y];
 				}
 			}
+			if (texturePoints.size() > 0) {
+				myTriangle.texturePoints[0] = texturePoints[i];
+				myTriangle.texturePoints[1] = texturePoints[i1];
+				myTriangle.texturePoints[2] = texturePoints[i2];
+			}
+			for (int y = 0; y < texturePalette.size(); y++) {
+				if (texturePalette[y].name == colour) {
+					TextureMap textureMap = texturePalette[y];
+					myTriangle.colour.name = colour;
+				}
+			}
+			if (vertexNormals.size() > 0) {
+				myTriangle.v0Normal = vertexNormals[i];
+				myTriangle.v1Normal = vertexNormals[i1];
+				myTriangle.v2Normal = vertexNormals[i2];
+			}
 			if (palette.size() == 0) {
-				myTriangle.colour = white;
+				myTriangle.colour = red;
 			}
 			modelTriangles.push_back(myTriangle);
 		}
@@ -109,14 +145,18 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 std::vector<ModelTriangle> objReader() {
 	std::string objectName;
 	std::string objectColour;
-	std::vector<Colour> palette = {}; //mtlReader();
+	std::pair <std::vector<Colour>, std::vector<TextureMap>> mtlRes = mtlReader();
+	std::vector<Colour> palette = mtlRes.first;
+	std::vector<TextureMap> texturePalette = mtlRes.second;
 	std::vector<glm::vec3> vertices;
+	std::vector<TexturePoint> texturePoints;
 	std::vector<glm::vec3> vertexNormals;
 	std::vector<unsigned int> faceVertices;
+	std::vector<unsigned int> texturePointIndexes;
 	std::vector<unsigned int> faceVerticeNormals;
 	std::vector<ModelTriangle> finalTriangles;
 
-	std::ifstream file("sphere.obj");
+	std::ifstream file("textured-cornell-box.obj");
 	std::string line;
 	for (line; std::getline(file, line);) {
 		std::vector<std::string> tokens = split(line, ' ');
@@ -126,11 +166,14 @@ std::vector<ModelTriangle> objReader() {
 			std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> res = vertexTranslator(faceVertices, vertices, faceVerticeNormals, vertexNormals);
 			objectVertices = res.first;
 			objectVertexNormals = res.second;
-			std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette, objectVertexNormals);
+			std::vector<TexturePoint> objectTexturePoints = textureTranslator(texturePointIndexes, texturePoints);
+			std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette, texturePalette, objectTexturePoints, objectVertexNormals);
 			for (int i = 0; i < objectTriangles.size(); i++) {
 				finalTriangles.push_back(objectTriangles[i]);
 			}
 			faceVertices.clear();
+			texturePointIndexes.clear();
+			faceVerticeNormals.clear();
 			objectName = tokens[1];
 		}
 		else if (tokens[0] == "usemtl") {
@@ -143,6 +186,12 @@ std::vector<ModelTriangle> objReader() {
 			}
 			vertices.push_back(vertex);
 		}
+		else if (tokens[0] == "vt") {
+			TexturePoint texturePoint;
+			texturePoint.x = stof(tokens[1]);
+			texturePoint.y = stof(tokens[2]);
+			texturePoints.push_back(texturePoint);
+		}
 		else if (tokens[0] == "vn") {
 			glm::vec3 vertexNormal;
 			for (int i = 1; i < tokens.size(); i++) {
@@ -153,18 +202,23 @@ std::vector<ModelTriangle> objReader() {
 		else if (tokens[0] == "f") {
 			glm::vec3 vertices;
 			float vertex;
+			float texturePointIndex;
 			glm::vec3 vertexNormals;
 			float vertexNormal;
 			for (int i = 1; i < tokens.size(); i++) {
 				std::vector<std::string> tokenVertices = split(tokens[i], '/');
 				vertex = stof(tokenVertices[0]);
 				vertices[i - 1] = vertex;
+				faceVertices.push_back(vertices[i - 1]);
+				if (tokenVertices[1] != "") {
+					texturePointIndex = stof(tokenVertices[1]);
+					texturePointIndexes.push_back(texturePointIndex);
+				}
 				if (tokenVertices.size() >= 3) {
 					vertexNormal = stof(tokenVertices[2]);
 					vertexNormals[i - 1] = vertexNormal;
 					faceVerticeNormals.push_back(vertexNormals[i - 1]);
 				}
-				faceVertices.push_back(vertices[i - 1]);
 			}
 		}
 	}
@@ -173,7 +227,8 @@ std::vector<ModelTriangle> objReader() {
 	std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> res = vertexTranslator(faceVertices, vertices, faceVerticeNormals, vertexNormals);
 	objectVertices = res.first;
 	objectVertexNormals = res.second;
-	std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette, objectVertexNormals);
+	std::vector<TexturePoint> objectTexturePoints = textureTranslator(texturePointIndexes, texturePoints);
+	std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette, texturePalette, objectTexturePoints, objectVertexNormals);
 	for (int i = 0; i < objectTriangles.size(); i++) {
 		finalTriangles.push_back(objectTriangles[i]);
 	}
@@ -276,10 +331,7 @@ bool sortByY(CanvasPoint& lhs, CanvasPoint& rhs) {
 	return lhs.y < rhs.y;
 }
 
-void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour colour) {
-	//get RGB colour for triangle
-	uint32_t finalColour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
-
+void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, uint32_t colour) {
 	//sort vertices by their y coords
 	std::sort(triangle.vertices.begin(), triangle.vertices.end(), sortByY);
 
@@ -340,7 +392,7 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 		point2.y = y2;
 		point2.depth = 1 / (1 / topVertex.depth + (line2DepthStepSize * i));
 
-		drawLine(window, point1, point2, finalColour);
+		drawLine(window, point1, point2, colour);
 	}
 
 	//use interpolation to fill bottom triangle section, line by line
@@ -380,16 +432,15 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour c
 		point2.y = y2;
 		point2.depth = 1 / (1 / bottomVertex.depth + (line2DepthStepSize * i));
 
-		drawLine(window, point1, point2, finalColour);
+		drawLine(window, point1, point2, colour);
 	}
 }
 
-void drawStrokedTriangle(DrawingWindow& window, CanvasTriangle triangle, Colour colour) {
+void drawStrokedTriangle(DrawingWindow& window, CanvasTriangle triangle, uint32_t colour) {
 	//get RGB colour for triangle
-	uint32_t finalColour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
-	drawLine(window, triangle.vertices[0], triangle.vertices[1], finalColour);
-	drawLine(window, triangle.vertices[1], triangle.vertices[2], finalColour);
-	drawLine(window, triangle.vertices[2], triangle.vertices[0], finalColour);
+	drawLine(window, triangle.vertices[0], triangle.vertices[1], colour);
+	drawLine(window, triangle.vertices[1], triangle.vertices[2], colour);
+	drawLine(window, triangle.vertices[2], triangle.vertices[0], colour);
 }
 
 void lookAt(glm::vec3 pointToLookAt) {
@@ -412,6 +463,26 @@ float clamp(float intensity) {
 	return intensity;
 }
 
+Colour getColour(uint32_t RGBcolour) {
+	uint32_t alphaOffset{ 0x20 };
+	uint32_t redOffset{ 0x10 };
+	uint32_t greenOffset{ 0x08 };
+	uint32_t blueOffset{ 0x00 };
+	
+	uint32_t byteMask{ 0xFF };
+	uint32_t alphaMask{ byteMask << alphaOffset };
+	uint32_t redMask{ byteMask << redOffset };
+	uint32_t greenMask{ byteMask << greenOffset };
+	uint32_t blueMask{ byteMask << blueOffset };
+
+	Colour colour;
+	colour.red = (RGBcolour & redMask >> redOffset) & byteMask;
+	colour.green = (RGBcolour & greenMask >> greenOffset) & byteMask;
+	colour.blue = (RGBcolour & blueMask >> blueOffset) & byteMask;
+
+	return colour;
+}
+
 void draw(DrawingWindow &window) {
 	window.clearPixels();
 	std::vector<ModelTriangle> modelTriangles = objReader();
@@ -430,7 +501,7 @@ void draw(DrawingWindow &window) {
 			CanvasPoint vertex0 = getCanvasIntersectionPoint(modelTriangles[i].vertices[0]);
 			CanvasPoint vertex1 = getCanvasIntersectionPoint(modelTriangles[i].vertices[1]);
 			CanvasPoint vertex2 = getCanvasIntersectionPoint(modelTriangles[i].vertices[2]);
-			Colour white = { 255, 255, 255 };
+			uint32_t white = (255 << 24) + (255 << 16) + (255 << 8) + 255;
 			triangle.vertices[0] = vertex0;
 			triangle.vertices[1] = vertex1;
 			triangle.vertices[2] = vertex2;
@@ -448,16 +519,17 @@ void draw(DrawingWindow &window) {
 		}
 
 		for (int i = 0; i < modelTriangles.size(); i++) {
-			CanvasTriangle triangle;
-			CanvasPoint vertex0 = getCanvasIntersectionPoint(modelTriangles[i].vertices[0]);
-			CanvasPoint vertex1 = getCanvasIntersectionPoint(modelTriangles[i].vertices[1]);
-			CanvasPoint vertex2 = getCanvasIntersectionPoint(modelTriangles[i].vertices[2]);
-			Colour colour = modelTriangles[i].colour;
-			triangle.vertices[0] = vertex0;
-			triangle.vertices[1] = vertex1;
-			triangle.vertices[2] = vertex2;
-			drawFilledTriangle(window, triangle, colour);
-			drawStrokedTriangle(window, triangle, colour);
+			ModelTriangle triangle = modelTriangles[i];
+			CanvasTriangle canvasTriangle;
+			canvasTriangle.vertices[0] = getCanvasIntersectionPoint(triangle.vertices[0]);
+			canvasTriangle.vertices[1] = getCanvasIntersectionPoint(triangle.vertices[1]);
+			canvasTriangle.vertices[2] = getCanvasIntersectionPoint(triangle.vertices[2]);
+
+			Colour colour = triangle.colour;
+			uint32_t finalColour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
+			
+			drawFilledTriangle(window, canvasTriangle, finalColour);
+			drawStrokedTriangle(window, canvasTriangle, finalColour);
 		}
 		CanvasPoint light;
 		light = getCanvasIntersectionPoint(lightSource);
@@ -467,19 +539,15 @@ void draw(DrawingWindow &window) {
 	
 	//render using ray tracing
 	if (renderMethod == "ray") {
+		TextureMap textureMap(textureName);
 		for (int y = 0; y < HEIGHT; y++) {
 			for (int x = 0; x < WIDTH; x++) {
+
 				CanvasPoint point;
 				point.x = x;
 				point.y = y;
 				glm::vec3 ray = getRayDirection(point);
 				RayTriangleIntersection rayIntersection = getClosestIntersection(cameraPosition, modelTriangles, ray, -1);
-
-				//light intensity
-				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
-				float lightIntensity = 100 / (4.0 * pi * distanceToLight * distanceToLight);
-				lightIntensity = clamp(lightIntensity);
-
 				ModelTriangle triangle = rayIntersection.intersectedTriangle;
 
 				//calculating barycentric coords
@@ -488,14 +556,22 @@ void draw(DrawingWindow &window) {
 				float v = (glm::length(glm::cross((triangle.vertices[1] - triangle.vertices[0]), (rayIntersection.intersectionPoint - triangle.vertices[0]))) / 2) / triangleArea;
 				float w = 1 - u - v;
 
-				glm::vec3 v0normal = glm::normalize(triangle.v0Normal);
-				glm::vec3 v1normal = glm::normalize(triangle.v1Normal);
-				glm::vec3 v2normal = glm::normalize(triangle.v2Normal);
-				glm::vec3 pointNormal = w * v0normal + u * v1normal + v * v2normal;
+				//proximity lighting
+				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
+				float lightIntensity = 100 / (4.0 * pi * distanceToLight * distanceToLight);
+				lightIntensity = clamp(lightIntensity);
+				
+				//interpolating normals
+				glm::vec3 v0normal = triangle.v0Normal;
+				glm::vec3 v1normal = triangle.v1Normal;
+				glm::vec3 v2normal = triangle.v2Normal;
+				glm::vec3 pointNormal = glm::normalize(w * v0normal + u * v1normal + v * v2normal);
 
-				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
+				//Interpolated normals AOI lighting
+				glm::vec3 lightDirection = glm::normalize(lightSource - rayIntersection.intersectionPoint);
 				float AOI = clamp(glm::dot(lightDirection, pointNormal));
 
+				//Interpolated normals specular lighting
 				glm::vec3 Ri = glm::normalize(rayIntersection.intersectionPoint - lightSource);
 				glm::vec3 view = glm::normalize(cameraPosition - rayIntersection.intersectionPoint);
 				glm::vec3 Rr = glm::normalize(Ri - (pointNormal * 2.0f) * glm::dot(Ri, pointNormal));
@@ -510,9 +586,10 @@ void draw(DrawingWindow &window) {
 				float v0AOI = glm::dot(lightDirection, v0normal);
 				float v1AOI = glm::dot(lightDirection, v1normal);
 				float v2AOI = glm::dot(lightDirection, v2normal);
-				float AOI = clamp(w * v0AOI + u * v1AOI + v * v2AOI);
+				float AOI = clamp(w * v0AOI + u * v1AOI + v * v2AOI);*/
 
 				//gouraud specular
+				/*
 				glm::vec3 Ri = rayIntersection.intersectionPoint - lightSource;
 				Ri = glm::normalize(Ri);
 				glm::vec3 view = cameraPosition - rayIntersection.intersectionPoint;
@@ -525,15 +602,17 @@ void draw(DrawingWindow &window) {
 				float v2Specular = pow(glm::dot(v2Rr, view), 256);
 				float specular = clamp(w * v0Specular + u * v1Specular + v * v2Specular);*/
 
-				/*//AOI
+				//AOI
+				/*
 				glm::vec3 normal = glm::normalize(triangle.normal);
 				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
 				lightDirection = glm::normalize(lightDirection);
 				
 				float AOI = glm::dot(lightDirection, normal);
-				AOI = clamp(AOI);
+				AOI = clamp(AOI);*/
 				
 				//specular
+				/*
 				glm::vec3 Ri = rayIntersection.intersectionPoint - lightSource;
 				Ri = glm::normalize(Ri);
 				glm::vec3 view = cameraPosition - rayIntersection.intersectionPoint;
@@ -545,10 +624,9 @@ void draw(DrawingWindow &window) {
 
 				float brightnessModifier = lightIntensity * 0.5 + AOI * 0.2 + specular * 0.3;
 
+				//shadows
 				ray = lightSource - rayIntersection.intersectionPoint;
 				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex);
-
-				//shadows
 				if (closestIntersect.distanceFromCamera < distanceToLight) {
 					brightnessModifier = 0.2;
 				}
@@ -558,22 +636,41 @@ void draw(DrawingWindow &window) {
 					brightnessModifier = 0.3;
 				}
 
-				int red = triangle.colour.red = triangle.colour.red * brightnessModifier;
-				int green = triangle.colour.green = triangle.colour.green * brightnessModifier;
-				int blue = triangle.colour.blue = triangle.colour.blue * brightnessModifier;
-				uint32_t colour = (255 << 24) + (red << 16) + (green << 8) + blue;
-				
-				if (rayIntersection.intersectedTriangle.colour.red != NULL || rayIntersection.intersectedTriangle.colour.green != NULL || rayIntersection.intersectedTriangle.colour.blue != NULL) {
-					window.setPixelColour(x, y, colour);
+				//texture mapping
+				uint32_t RGBcolour;
+				if (triangle.texturePoints[0].x != 0 && texture) {
+					TexturePoint v0Tp = triangle.texturePoints[0];
+					TexturePoint v1Tp = triangle.texturePoints[1];
+					TexturePoint v2Tp = triangle.texturePoints[2];
+					TexturePoint pointTp;
+					pointTp.x = w * v0Tp.x + u * v1Tp.x + v * v2Tp.x;
+					pointTp.y = w * v0Tp.y + u * v1Tp.y + v * v2Tp.y;
+					float pixelOnTextureX = round(pointTp.x * textureMap.width);
+					float pixelOnTextureY = round(pointTp.y * textureMap.height);
+					int index = pixelOnTextureY * textureMap.width + pixelOnTextureX;
+					RGBcolour = textureMap.pixels[index];
+					Colour colour = getColour(RGBcolour);
+					colour.red *= brightnessModifier;
+					colour.green *= brightnessModifier;
+					colour.blue *= brightnessModifier;
+					RGBcolour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
 				}
+				else
+				{
+					int red = triangle.colour.red * brightnessModifier;
+					int green = triangle.colour.green * brightnessModifier;
+					int blue = triangle.colour.blue * brightnessModifier;
+					RGBcolour = (255 << 24) + (red << 16) + (green << 8) + blue;
+				}
+				window.setPixelColour(x, y, RGBcolour);
 			}
 		}
+		//light position in scene
 		CanvasPoint light;
 		light = getCanvasIntersectionPoint(lightSource);
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
 		window.setPixelColour(light.x, light.y, lightColour);
 	}
-	
 }
 
 void handleEvent(SDL_Event event, DrawingWindow &window) {
@@ -653,14 +750,28 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 		//render using rasterising
 		else if (event.key.keysym.sym == SDLK_r) {
 			renderMethod = "raster";
+			std::cout << "Render mode: Rasterised" << std::endl;
 		}
 		//render using ray tracing
 		else if (event.key.keysym.sym == SDLK_t) {
 			renderMethod = "ray";
+			std::cout << "Render mode: Ray-traced" << std::endl;
 		}
 		//render wireframe
 		else if (event.key.keysym.sym == SDLK_e) {
 			renderMethod = "wire";
+			std::cout << "Render mode: Wireframe" << std::endl;
+		}
+		//render wireframe
+		else if (event.key.keysym.sym == SDLK_y) {
+			texture = !texture;
+			if (texture) {
+				std::cout << "Texturing: On" << std::endl;
+			}
+			else
+			{
+				std::cout << "Texturing: Off" << std::endl;
+			}
 		}
 	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");

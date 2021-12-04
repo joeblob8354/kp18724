@@ -10,6 +10,7 @@ public:
 	size_t width;
 	size_t height;
 	std::vector<uint32_t> pixels;
+	std::string name;
 
 	TextureMap();
 	TextureMap(const std::string &filename);
