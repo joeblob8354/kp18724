@@ -16,8 +16,10 @@
 #define HEIGHT 240
 #define pi 3.14159265358979323846 
 std::string renderMethod = "raster";
+std::string fileName = "cornell+sphere";
 bool texture = false;
-std::string textureName = "cobbles.ppm";
+std::string textureFile = "checkerboardfloor.ppm";
+std::string textureName = "Checkerboard";
 glm::vec3 cameraPosition(0.0, 0.0, 10.0);
 float scale = 75;
 float focalLength = 4;
@@ -31,7 +33,7 @@ std::pair <std::vector<Colour>, std::vector<TextureMap>> mtlReader() {
 	std::vector<Colour> palette;
 	std::vector<TextureMap> texturePalette;
 
-	std::ifstream file("textured-cornell-box.mtl");
+	std::ifstream file(fileName + ".mtl");
 	std::string line;
 	for (line; std::getline(file, line);) {
 		std::vector<std::string> tokens = split(line, ' ');
@@ -156,7 +158,7 @@ std::vector<ModelTriangle> objReader() {
 	std::vector<unsigned int> faceVerticeNormals;
 	std::vector<ModelTriangle> finalTriangles;
 
-	std::ifstream file("textured-cornell-box.obj");
+	std::ifstream file(fileName + ".obj");
 	std::string line;
 	for (line; std::getline(file, line);) {
 		std::vector<std::string> tokens = split(line, ' ');
@@ -483,6 +485,21 @@ Colour getColour(uint32_t RGBcolour) {
 	return colour;
 }
 
+Colour getTextureColour(ModelTriangle triangle, float u, float v, float w, TextureMap textureMap) {
+	TexturePoint v0Tp = triangle.texturePoints[0];
+	TexturePoint v1Tp = triangle.texturePoints[1];
+	TexturePoint v2Tp = triangle.texturePoints[2];
+	TexturePoint pointTp;
+	pointTp.x = w * v0Tp.x + u * v1Tp.x + v * v2Tp.x;
+	pointTp.y = w * v0Tp.y + u * v1Tp.y + v * v2Tp.y;
+	float pixelOnTextureX = round(pointTp.x * textureMap.width);
+	float pixelOnTextureY = round(pointTp.y * textureMap.height);
+	int index = pixelOnTextureY * textureMap.width + pixelOnTextureX;
+	uint32_t RGBcolour = textureMap.pixels[index];
+	Colour colour = getColour(RGBcolour);
+	return colour;
+}
+
 void draw(DrawingWindow &window) {
 	window.clearPixels();
 	std::vector<ModelTriangle> modelTriangles = objReader();
@@ -526,10 +543,10 @@ void draw(DrawingWindow &window) {
 			canvasTriangle.vertices[2] = getCanvasIntersectionPoint(triangle.vertices[2]);
 
 			Colour colour = triangle.colour;
-			uint32_t finalColour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
-			
-			drawFilledTriangle(window, canvasTriangle, finalColour);
-			drawStrokedTriangle(window, canvasTriangle, finalColour);
+			uint32_t RGBcolour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
+
+			drawFilledTriangle(window, canvasTriangle, RGBcolour);
+			drawStrokedTriangle(window, canvasTriangle, RGBcolour);
 		}
 		CanvasPoint light;
 		light = getCanvasIntersectionPoint(lightSource);
@@ -539,7 +556,7 @@ void draw(DrawingWindow &window) {
 	
 	//render using ray tracing
 	if (renderMethod == "ray") {
-		TextureMap textureMap(textureName);
+		TextureMap textureMap(textureFile);
 		for (int y = 0; y < HEIGHT; y++) {
 			for (int x = 0; x < WIDTH; x++) {
 
@@ -576,6 +593,8 @@ void draw(DrawingWindow &window) {
 				glm::vec3 view = glm::normalize(cameraPosition - rayIntersection.intersectionPoint);
 				glm::vec3 Rr = glm::normalize(Ri - (pointNormal * 2.0f) * glm::dot(Ri, pointNormal));
 				float specular = clamp(pow(glm::dot(Rr, view), 256));
+
+				float brightnessModifier = lightIntensity * 0.6 + AOI * 0.2 + specular * 0.2;
 
 				//gouraud AOI
 				/*glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
@@ -622,7 +641,10 @@ void draw(DrawingWindow &window) {
 				float specular = pow(glm::dot(Rr, view), 256.0);
 				specular = clamp(specular);*/
 
-				float brightnessModifier = lightIntensity * 0.5 + AOI * 0.2 + specular * 0.3;
+				//ambient
+				if (brightnessModifier < 0.3) {
+					brightnessModifier = 0.3;
+				}
 
 				//shadows
 				ray = lightSource - rayIntersection.intersectionPoint;
@@ -631,37 +653,36 @@ void draw(DrawingWindow &window) {
 					brightnessModifier = 0.2;
 				}
 
-				//ambient
-				if (brightnessModifier < 0.3) {
-					brightnessModifier = 0.3;
-				}
-
 				//texture mapping
-				uint32_t RGBcolour;
-				if (triangle.texturePoints[0].x != 0 && texture) {
-					TexturePoint v0Tp = triangle.texturePoints[0];
-					TexturePoint v1Tp = triangle.texturePoints[1];
-					TexturePoint v2Tp = triangle.texturePoints[2];
-					TexturePoint pointTp;
-					pointTp.x = w * v0Tp.x + u * v1Tp.x + v * v2Tp.x;
-					pointTp.y = w * v0Tp.y + u * v1Tp.y + v * v2Tp.y;
-					float pixelOnTextureX = round(pointTp.x * textureMap.width);
-					float pixelOnTextureY = round(pointTp.y * textureMap.height);
-					int index = pixelOnTextureY * textureMap.width + pixelOnTextureX;
-					RGBcolour = textureMap.pixels[index];
-					Colour colour = getColour(RGBcolour);
-					colour.red *= brightnessModifier;
-					colour.green *= brightnessModifier;
-					colour.blue *= brightnessModifier;
-					RGBcolour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
+				Colour colour;
+				if (triangle.colour.name == textureName && texture) {
+					colour = getTextureColour(triangle, u, v, w, textureMap);
 				}
 				else
 				{
-					int red = triangle.colour.red * brightnessModifier;
-					int green = triangle.colour.green * brightnessModifier;
-					int blue = triangle.colour.blue * brightnessModifier;
-					RGBcolour = (255 << 24) + (red << 16) + (green << 8) + blue;
+					colour = triangle.colour;
 				}
+
+				//mirror reflections
+				if (triangle.colour.name == "Mirror") {
+					glm::vec3 triangleNormal = glm::normalize(triangle.normal);
+					Ri = glm::normalize(rayIntersection.intersectionPoint - cameraPosition);
+					Rr = glm::normalize(Ri - 2.0f * (glm::dot(Ri, triangleNormal) * triangleNormal));
+					RayTriangleIntersection reflectionRay = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, Rr, rayIntersection.triangleIndex);
+					Colour reflectionColour;
+					reflectionColour = reflectionRay.intersectedTriangle.colour;
+					if (reflectionColour.name == textureName && texture) {
+						colour = getTextureColour(reflectionRay.intersectedTriangle, u, v, w, textureMap);
+					}
+					else
+					{
+						colour = reflectionColour;
+					}
+				}
+				colour.red *= brightnessModifier;
+				colour.green *= brightnessModifier;
+				colour.blue *= brightnessModifier;
+				uint32_t RGBcolour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
 				window.setPixelColour(x, y, RGBcolour);
 			}
 		}
@@ -695,7 +716,7 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 		else if (event.key.keysym.sym == SDLK_SPACE) {
 			lightSource = { lightSource[0], lightSource[1], lightSource[2] + 0.1 };
 		}
-		//movr light in
+		//move light in
 		else if (event.key.keysym.sym == SDLK_LSHIFT) {
 			lightSource = { lightSource[0], lightSource[1], lightSource[2] - 0.1 };
 		}
@@ -762,7 +783,7 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 			renderMethod = "wire";
 			std::cout << "Render mode: Wireframe" << std::endl;
 		}
-		//render wireframe
+		//]textures on/off
 		else if (event.key.keysym.sym == SDLK_y) {
 			texture = !texture;
 			if (texture) {
