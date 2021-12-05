@@ -697,8 +697,8 @@ void draw(DrawingWindow &window) {
 				specular = clamp(specular);*/
 
 				//ambient
-				if (brightnessModifier < 0.4) {
-					brightnessModifier = 0.4;
+				if (brightnessModifier < 0.5) {
+					brightnessModifier = 0.5;
 				}
 
 				//shadows
