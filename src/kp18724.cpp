@@ -16,7 +16,7 @@
 #define HEIGHT 240
 #define pi 3.14159265358979323846 
 std::string renderMethod = "raster";
-std::string fileName = "cornell+sphere";
+std::string fileName = "scene";
 bool texture = false;
 std::string textureFile = "checkerboardfloor.ppm";
 std::string textureName = "Checkerboard";
@@ -287,7 +287,7 @@ glm::vec3 getRayIntersection(glm::vec3 cameraPosition, ModelTriangle triangle, g
 	return possibleSolution;
 }
 
-RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, std::vector<ModelTriangle> modelTriangles, glm::vec3 ray, float triangleIndex) {
+RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, std::vector<ModelTriangle> modelTriangles, glm::vec3 ray, float triangleIndex, std::string ignoredObject) {
 	ray = glm::normalize(ray);
 	std::vector<RayTriangleIntersection> rayTriangleIntersections;
 	for (int i = 0; i < modelTriangles.size(); i++) {
@@ -305,7 +305,7 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, std::ve
 			rayTriangleIntersection.intersectedTriangle = modelTriangles[i];
 			rayTriangleIntersection.intersectionPoint = modelTriangles[i].vertices[0] + u * e0 + v * e1;
 			rayTriangleIntersection.triangleIndex = i;
-			if (i != triangleIndex) {
+			if (i != triangleIndex && rayTriangleIntersection.intersectedTriangle.colour.name != ignoredObject) {
 				rayTriangleIntersections.push_back(rayTriangleIntersection);
 			}
 		}
@@ -455,14 +455,14 @@ void lookAt(glm::vec3 pointToLookAt) {
 	cameraOrientation[2] = glm::normalize(cameraOrientation[2]);
 }
 
-float clamp(float intensity) {
-	if (intensity > 1) {
-		intensity = 1;
+float clamp(float min, float max, float val) {
+	if (val > max) {
+		val = max;
 	}
-	if (intensity < 0) {
-		intensity = 0;
+	if (val < min) {
+		val = min;
 	}
-	return intensity;
+	return val;
 }
 
 Colour getColour(uint32_t RGBcolour) {
@@ -498,6 +498,60 @@ Colour getTextureColour(ModelTriangle triangle, float u, float v, float w, Textu
 	uint32_t RGBcolour = textureMap.pixels[index];
 	Colour colour = getColour(RGBcolour);
 	return colour;
+}
+
+glm::vec3 getRefractedRay(glm::vec3 Ri, glm::vec3 normal, float refractiveIndex) {
+	float rIndexOutside = 1;
+	float rIndexInside = refractiveIndex;
+	float cosOfAngle = clamp(-1, 1, glm::dot(Ri, normal));
+	
+	if (cosOfAngle < 0) {
+		cosOfAngle = -cosOfAngle;
+	}
+	else
+	{
+		std::swap(rIndexOutside, rIndexInside);
+		normal = -normal;
+	}
+
+	glm::vec3 refractedRay;
+	float refractionRatio = rIndexOutside / rIndexInside;
+	float x = (1 - powf(refractionRatio, 2.0)) * (1 - powf(cosOfAngle, 2.0));
+	if (x < 0) {
+		refractedRay = { 0,0,0 };
+	}
+	else
+	{
+		refractedRay = refractionRatio * Ri + ((refractionRatio * cosOfAngle) - sqrtf(x)) * normal;
+	}
+	return refractedRay;
+}
+
+//finding ratio of light that is reflected vs refracted
+float getReflectRefractRatio(glm::vec3 Ri, glm::vec3 normal, float refractiveIndex) {
+
+	float rIndexOutside = 1;
+	float rIndexInside = refractiveIndex;
+	float cosOfAngle = clamp(-1, 1, glm::dot(Ri, normal));
+
+	if (cosOfAngle > 0) {
+		std::swap(rIndexOutside, rIndexInside);
+	}
+
+	float sinOfAngle = rIndexOutside / rIndexInside * sqrtf(std::max(0.f, 1 - cosOfAngle * cosOfAngle));
+
+	float reflectRefractRatio;
+	if (sinOfAngle >= 1) {
+		reflectRefractRatio = 1;
+	}
+	else {
+		float cos = sqrtf(std::max(0.f, 1 - sinOfAngle * sinOfAngle));
+		cosOfAngle = fabsf(cosOfAngle);
+		float Fr1 = powf(((rIndexInside * cosOfAngle) - (rIndexOutside * cos)) / ((rIndexInside * cosOfAngle) + (rIndexOutside * cos)), 2.0);
+		float Fr2 = powf(((rIndexOutside * cosOfAngle) - (rIndexInside * cos)) / ((rIndexOutside * cosOfAngle) + (rIndexInside * cos)), 2.0);
+		reflectRefractRatio = (Fr1 + Fr2) / 2;
+	}
+	return reflectRefractRatio;
 }
 
 void draw(DrawingWindow &window) {
@@ -564,7 +618,7 @@ void draw(DrawingWindow &window) {
 				point.x = x;
 				point.y = y;
 				glm::vec3 ray = getRayDirection(point);
-				RayTriangleIntersection rayIntersection = getClosestIntersection(cameraPosition, modelTriangles, ray, -1);
+				RayTriangleIntersection rayIntersection = getClosestIntersection(cameraPosition, modelTriangles, ray, -1, "");
 				ModelTriangle triangle = rayIntersection.intersectedTriangle;
 
 				//calculating barycentric coords
@@ -575,8 +629,8 @@ void draw(DrawingWindow &window) {
 
 				//proximity lighting
 				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
-				float lightIntensity = 100 / (4.0 * pi * distanceToLight * distanceToLight);
-				lightIntensity = clamp(lightIntensity);
+				float lightIntensity = 100 / (4.0 * pi * powf(distanceToLight, 2.0));
+				lightIntensity = clamp(0, 1, lightIntensity);
 				
 				//interpolating normals
 				glm::vec3 v0normal = triangle.v0Normal;
@@ -586,15 +640,16 @@ void draw(DrawingWindow &window) {
 
 				//Interpolated normals AOI lighting
 				glm::vec3 lightDirection = glm::normalize(lightSource - rayIntersection.intersectionPoint);
-				float AOI = clamp(glm::dot(lightDirection, pointNormal));
+				float AOI = clamp(0, 1, glm::dot(lightDirection, pointNormal));
 
 				//Interpolated normals specular lighting
 				glm::vec3 Ri = glm::normalize(rayIntersection.intersectionPoint - lightSource);
 				glm::vec3 view = glm::normalize(cameraPosition - rayIntersection.intersectionPoint);
 				glm::vec3 Rr = glm::normalize(Ri - (pointNormal * 2.0f) * glm::dot(Ri, pointNormal));
-				float specular = clamp(pow(glm::dot(Rr, view), 256));
+				float specular = clamp(0, 1, powf(glm::dot(Rr, view), 128.0));
 
-				float brightnessModifier = lightIntensity * 0.6 + AOI * 0.2 + specular * 0.2;
+				float diffuse = lightIntensity * 0.7 + AOI * 0.3;
+				float brightnessModifier = diffuse * 0.6 + specular * 0.4;
 
 				//gouraud AOI
 				/*glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
@@ -642,13 +697,13 @@ void draw(DrawingWindow &window) {
 				specular = clamp(specular);*/
 
 				//ambient
-				if (brightnessModifier < 0.3) {
-					brightnessModifier = 0.3;
+				if (brightnessModifier < 0.4) {
+					brightnessModifier = 0.4;
 				}
 
 				//shadows
 				ray = lightSource - rayIntersection.intersectionPoint;
-				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex);
+				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex, "");
 				if (closestIntersect.distanceFromCamera < distanceToLight) {
 					brightnessModifier = 0.2;
 				}
@@ -663,12 +718,13 @@ void draw(DrawingWindow &window) {
 					colour = triangle.colour;
 				}
 
-				//mirror reflections
+				//mirrors
+				glm::vec3 triangleNormal = glm::normalize(triangle.normal);
+				//reflections
 				if (triangle.colour.name == "Mirror") {
-					glm::vec3 triangleNormal = glm::normalize(triangle.normal);
 					Ri = glm::normalize(rayIntersection.intersectionPoint - cameraPosition);
 					Rr = glm::normalize(Ri - 2.0f * (glm::dot(Ri, triangleNormal) * triangleNormal));
-					RayTriangleIntersection reflectionRay = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, Rr, rayIntersection.triangleIndex);
+					RayTriangleIntersection reflectionRay = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "");
 					Colour reflectionColour;
 					reflectionColour = reflectionRay.intersectedTriangle.colour;
 					if (reflectionColour.name == textureName && texture) {
@@ -679,10 +735,62 @@ void draw(DrawingWindow &window) {
 						colour = reflectionColour;
 					}
 				}
+
+				//glas objects
+				if (triangle.colour.name == "Glass") {
+					//refraction
+					glm::vec3 bias = 0.1f * triangleNormal;
+					float refractiveIndex = 1.4;
+					glm::vec3 Ri = glm::normalize(rayIntersection.intersectionPoint - cameraPosition);
+					float reflectRefractRatio = getReflectRefractRatio(Ri, triangleNormal, refractiveIndex);
+
+					Colour refractionColour;
+					if (reflectRefractRatio < 1) {
+						ray = glm::normalize(getRefractedRay(Ri, triangleNormal, refractiveIndex));
+						glm::vec3 startPoint;
+						if (glm::dot(Ri, triangleNormal) < 0) {
+							startPoint = rayIntersection.intersectionPoint - bias;
+						}
+						else {
+							startPoint = rayIntersection.intersectionPoint + bias;
+						}
+						RayTriangleIntersection refractedIntersect = getClosestIntersection(startPoint, modelTriangles, ray, rayIntersection.triangleIndex, "Glass");
+						refractionColour = refractedIntersect.intersectedTriangle.colour;
+					}
+					else {
+						refractionColour.red = refractionColour.green = refractionColour.blue = 0;
+					}
+
+					//reflection
+					Rr = glm::normalize(Ri - 2.0f * (glm::dot(Ri, triangleNormal) * triangleNormal));
+					glm::vec3 startPoint;
+					if (glm::dot(Ri, triangleNormal) < 0) {
+						startPoint = rayIntersection.intersectionPoint + bias;
+					}
+					else
+					{
+						startPoint = rayIntersection.intersectionPoint - bias;
+					}
+					RayTriangleIntersection reflectedIntersect = getClosestIntersection(startPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "");
+					Colour reflectionColour = reflectedIntersect.intersectedTriangle.colour;
+
+					reflectionColour.red *= reflectRefractRatio;
+					reflectionColour.green *= reflectRefractRatio;
+					reflectionColour.blue *= reflectRefractRatio;
+					
+					refractionColour.red *= (1 - reflectRefractRatio);
+					refractionColour.green *= (1 - reflectRefractRatio);
+					refractionColour.blue *= (1 - reflectRefractRatio);
+
+					colour.red = reflectionColour.red + refractionColour.red;
+					colour.green = reflectionColour.green + refractionColour.green;
+					colour.blue = reflectionColour.blue + refractionColour.blue;
+				}
+
 				colour.red *= brightnessModifier;
 				colour.green *= brightnessModifier;
 				colour.blue *= brightnessModifier;
-				uint32_t RGBcolour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
+				uint32_t RGBcolour = (0 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
 				window.setPixelColour(x, y, RGBcolour);
 			}
 		}

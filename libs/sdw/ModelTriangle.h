@@ -10,7 +10,6 @@ struct ModelTriangle {
 	std::array<glm::vec3, 3> vertices{};
 	std::array<TexturePoint, 3> texturePoints{};
 	Colour colour{};
-	uint32_t rgbColour;
 	glm::vec3 normal{};
 	glm::vec3 v0Normal{};
 	glm::vec3 v1Normal{};
