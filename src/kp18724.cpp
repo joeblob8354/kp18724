@@ -16,7 +16,7 @@
 #define HEIGHT 240
 #define pi 3.14159265358979323846 
 std::string renderMethod = "ray";
-std::string fileName = "scene";
+std::string fileName = "glass";
 bool texture = false;
 TextureMap checkerBoard("checkerboardfloor.ppm");
 TextureMap leopardPrint("leopardPrint.ppm");
@@ -493,6 +493,14 @@ Colour getColour(uint32_t RGBcolour) {
 	return colour;
 }
 
+glm::vec3 getBraycentric(ModelTriangle triangle, glm::vec3 point) {
+	float triangleArea = glm::length(glm::cross((triangle.vertices[1] - triangle.vertices[0]), (triangle.vertices[2] - triangle.vertices[0]))) / 2;
+	float u = (glm::length(glm::cross((triangle.vertices[0] - triangle.vertices[2]), (point - triangle.vertices[2]))) / 2) / triangleArea;
+	float v = (glm::length(glm::cross((triangle.vertices[1] - triangle.vertices[0]), (point - triangle.vertices[0]))) / 2) / triangleArea;
+	float w = 1 - u - v;
+	return glm::vec3(u, v, w);
+}
+
 Colour getTextureColour(ModelTriangle triangle, float u, float v, float w, TextureMap textureMap) {
 	TexturePoint v0Tp = triangle.texturePoints[0];
 	TexturePoint v1Tp = triangle.texturePoints[1];
@@ -628,11 +636,10 @@ void draw(DrawingWindow &window) {
 				ModelTriangle triangle = rayIntersection.intersectedTriangle;
 				glm::vec3 triangleNormal = glm::normalize(triangle.normal);
 
-				//calculating barycentric coords
-				float triangleArea = glm::length(glm::cross((triangle.vertices[1] - triangle.vertices[0]), (triangle.vertices[2] - triangle.vertices[0]))) / 2;
-				float u = (glm::length(glm::cross((triangle.vertices[0] - triangle.vertices[2]), (rayIntersection.intersectionPoint - triangle.vertices[2]))) / 2) / triangleArea;
-				float v = (glm::length(glm::cross((triangle.vertices[1] - triangle.vertices[0]), (rayIntersection.intersectionPoint - triangle.vertices[0]))) / 2) / triangleArea;
-				float w = 1 - u - v;
+				glm::vec3 triangleBarycentrics = getBraycentric(triangle, rayIntersection.intersectionPoint);
+				float u = triangleBarycentrics[0];
+				float v = triangleBarycentrics[1];
+				float w = triangleBarycentrics[2];
 
 				//proximity lighting
 				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
@@ -729,44 +736,55 @@ void draw(DrawingWindow &window) {
 				if (triangle.colour.name == "Mirror") {
 					Ri = glm::normalize(rayIntersection.intersectionPoint - cameraPosition);
 					Rr = glm::normalize(Ri - 2.0f * (glm::dot(Ri, triangleNormal) * triangleNormal));
+
 					RayTriangleIntersection reflectionRay = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "None");
-					Colour reflectionColour = reflectionRay.intersectedTriangle.colour;
 					if (reflectionRay.intersectedTriangle.map_Kd == "checkerboardfloor.ppm" && texture) {
-						colour = getTextureColour(reflectionRay.intersectedTriangle, u, v, w, checkerBoard);
+						glm::vec3 reflectionTriangleBarycentrics = getBraycentric(reflectionRay.intersectedTriangle, reflectionRay.intersectionPoint);
+						colour = getTextureColour(reflectionRay.intersectedTriangle, reflectionTriangleBarycentrics[0], reflectionTriangleBarycentrics[1], reflectionTriangleBarycentrics[2], checkerBoard);
 					}
 					else if (reflectionRay.intersectedTriangle.map_Kd == "leopardPrint.ppm" && texture) {
-						colour = getTextureColour(reflectionRay.intersectedTriangle, u, v, w, leopardPrint);
+						glm::vec3 reflectionTriangleBarycentrics = getBraycentric(reflectionRay.intersectedTriangle, reflectionRay.intersectionPoint);
+						colour = getTextureColour(reflectionRay.intersectedTriangle, reflectionTriangleBarycentrics[0], reflectionTriangleBarycentrics[1], reflectionTriangleBarycentrics[2], leopardPrint);
 					}
 					else
 					{
-						colour = reflectionColour;
+						colour = reflectionRay.intersectedTriangle.colour;
 					}
 				}
 
-				//glas objects
+				//glass objects, both reflect and refract
 				if (triangle.d == 0.0) {
 					//refraction
 					glm::vec3 bias = 0.1f * triangleNormal;
 					float refractiveIndex = triangle.Ni;
 					glm::vec3 Ri = glm::normalize(rayIntersection.intersectionPoint - cameraPosition);
+
+					//part of the incoming ray is reflected, part is refracted.
+					//ratio is based on the angle of the incident ray to the normal and the refractive index of the object
 					float reflectRefractRatio = getReflectRefractRatio(Ri, triangleNormal, refractiveIndex);
 
 					Colour refractionColour;
+					//check for internal reflection
 					if (reflectRefractRatio < 1) {
 						ray = glm::normalize(getRefractedRay(Ri, triangleNormal, refractiveIndex));
+						
 						glm::vec3 startPoint;
+						//check to see if we are inside or outside the object
 						if (glm::dot(Ri, triangleNormal) < 0) {
 							startPoint = rayIntersection.intersectionPoint - bias;
 						}
 						else {
 							startPoint = rayIntersection.intersectionPoint + bias;
 						}
+
 						RayTriangleIntersection refractedIntersect = getClosestIntersection(startPoint, modelTriangles, ray, rayIntersection.triangleIndex, "Glass");
 						if (refractedIntersect.intersectedTriangle.map_Kd == "checkerboardfloor.ppm" && texture) {
-							refractionColour = getTextureColour(refractedIntersect.intersectedTriangle, u, v, w, checkerBoard);
+							glm::vec3 refractionTriangleBarycentrics = getBraycentric(refractedIntersect.intersectedTriangle, refractedIntersect.intersectionPoint);
+							refractionColour = getTextureColour(refractedIntersect.intersectedTriangle, refractionTriangleBarycentrics[0], refractionTriangleBarycentrics[1], refractionTriangleBarycentrics[2], checkerBoard);
 						}
 						else if (refractedIntersect.intersectedTriangle.map_Kd == "leopardPrint.ppm" && texture) {
-							refractionColour = getTextureColour(refractedIntersect.intersectedTriangle, u, v, w, leopardPrint);
+							glm::vec3 refractionTriangleBarycentrics = getBraycentric(refractedIntersect.intersectedTriangle, refractedIntersect.intersectionPoint);
+							refractionColour = getTextureColour(refractedIntersect.intersectedTriangle, refractionTriangleBarycentrics[0], refractionTriangleBarycentrics[1], refractionTriangleBarycentrics[2], leopardPrint);
 						}
 						else
 						{
@@ -779,7 +797,10 @@ void draw(DrawingWindow &window) {
 
 					//reflection
 					Rr = glm::normalize(Ri - 2.0f * (glm::dot(Ri, triangleNormal) * triangleNormal));
+
+					Colour reflectionColour;
 					glm::vec3 startPoint;
+					//check to see if we are inside or outside the object
 					if (glm::dot(Ri, triangleNormal) < 0) {
 						startPoint = rayIntersection.intersectionPoint + bias;
 					}
@@ -787,13 +808,15 @@ void draw(DrawingWindow &window) {
 					{
 						startPoint = rayIntersection.intersectionPoint - bias;
 					}
+
 					RayTriangleIntersection reflectedIntersect = getClosestIntersection(startPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "None");
-					Colour reflectionColour;
 					if (reflectedIntersect.intersectedTriangle.map_Kd == "checkerboardfloor.ppm" && texture) {
-						reflectionColour = getTextureColour(reflectedIntersect.intersectedTriangle, u, v, w, checkerBoard);
+						glm::vec3 reflectionTriangleBarycentrics = getBraycentric(reflectedIntersect.intersectedTriangle, reflectedIntersect.intersectionPoint);
+						reflectionColour = getTextureColour(reflectedIntersect.intersectedTriangle, reflectionTriangleBarycentrics[0], reflectionTriangleBarycentrics[1], reflectionTriangleBarycentrics[2], checkerBoard);
 					}
 					else if (reflectedIntersect.intersectedTriangle.map_Kd == "leopardPrint.ppm" && texture) {
-						reflectionColour = getTextureColour(reflectedIntersect.intersectedTriangle, u, v, w, leopardPrint);
+						glm::vec3 reflectionTriangleBarycentrics = getBraycentric(reflectedIntersect.intersectedTriangle, reflectedIntersect.intersectionPoint);
+						reflectionColour = getTextureColour(reflectedIntersect.intersectedTriangle, reflectionTriangleBarycentrics[0], reflectionTriangleBarycentrics[1], reflectionTriangleBarycentrics[2], leopardPrint);
 					}
 					else
 					{
@@ -808,6 +831,7 @@ void draw(DrawingWindow &window) {
 					refractionColour.green *= (1 - reflectRefractRatio);
 					refractionColour.blue *= (1 - reflectRefractRatio);
 
+					//combining the reflected and refracted ray colours to get a final colour
 					colour.red = reflectionColour.red + refractionColour.red;
 					colour.green = reflectionColour.green + refractionColour.green;
 					colour.blue = reflectionColour.blue + refractionColour.blue;
