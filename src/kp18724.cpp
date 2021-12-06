@@ -15,8 +15,8 @@
 #define WIDTH 320
 #define HEIGHT 240
 #define pi 3.14159265358979323846 
-std::string renderMethod = "ray";
-std::string fileName = "scene";
+std::string renderMethod = "wire";
+std::string fileName = "centered-sphere";
 bool texture = false;
 TextureMap checkerBoard("checkerboardfloor.ppm");
 TextureMap leopardPrint("leopardPrint.ppm");
@@ -572,6 +572,11 @@ float getReflectRefractRatio(glm::vec3 Ri, glm::vec3 normal, float refractiveInd
 void draw(DrawingWindow& window) {
 	window.clearPixels();
 	std::vector<ModelTriangle> modelTriangles = objReader();
+
+	CanvasPoint lookAtPoint;
+	lookAtPoint = getCanvasIntersectionPoint(glm::vec3(0, 0, 0));
+	uint32_t lookAtPointColour = (255 << 24) + (255 << 16) + (0 << 8) + 0;
+	window.setPixelColour(lookAtPoint.x, lookAtPoint.y, lookAtPointColour);
 
 	//render wireframe
 	if (renderMethod == "wire") {
