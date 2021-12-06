@@ -16,7 +16,7 @@
 #define HEIGHT 240
 #define pi 3.14159265358979323846 
 std::string renderMethod = "ray";
-std::string fileName = "glass";
+std::string fileName = "scene";
 bool texture = false;
 TextureMap checkerBoard("checkerboardfloor.ppm");
 TextureMap leopardPrint("leopardPrint.ppm");
@@ -31,7 +31,7 @@ glm::vec3 lightSource(0, 0.45, 0);
 struct MtlEntry {
 	std::string name = "Default";
 	float Ns = 128;
-	glm::vec3 Ka { 1.0, 1.0, 1.0 };
+	glm::vec3 Ka{ 1.0, 1.0, 1.0 };
 	glm::vec3 Kd = { 1.0, 1.0, 1.0 };
 	float Ni = 1.45;
 	float d = 1.0;
@@ -358,7 +358,7 @@ void drawFilledTriangle(DrawingWindow& window, CanvasTriangle triangle, uint32_t
 	float extraPointYDiff = extraPoint.y - topVertex.y;
 	float ratio = extraPointYDiff / yDiff;
 	extraPoint.x = topVertex.x + ratio * xDiff;
-	
+
 	//find the depth of the extra point
 	float depthDiff = 1 / bottomVertex.depth - 1 / topVertex.depth;
 	extraPoint.depth = 1 / (1 / topVertex.depth + ratio * depthDiff);
@@ -478,7 +478,7 @@ Colour getColour(uint32_t RGBcolour) {
 	uint32_t redOffset{ 0x10 };
 	uint32_t greenOffset{ 0x08 };
 	uint32_t blueOffset{ 0x00 };
-	
+
 	uint32_t byteMask{ 0xFF };
 	uint32_t alphaMask{ byteMask << alphaOffset };
 	uint32_t redMask{ byteMask << redOffset };
@@ -520,7 +520,7 @@ glm::vec3 getRefractedRay(glm::vec3 Ri, glm::vec3 normal, float refractiveIndex)
 	float rIndexOutside = 1;
 	float rIndexInside = refractiveIndex;
 	float cosOfAngle = clamp(-1, 1, glm::dot(Ri, normal));
-	
+
 	if (cosOfAngle < 0) {
 		cosOfAngle = -cosOfAngle;
 	}
@@ -569,7 +569,7 @@ float getReflectRefractRatio(glm::vec3 Ri, glm::vec3 normal, float refractiveInd
 	return reflectRefractRatio;
 }
 
-void draw(DrawingWindow &window) {
+void draw(DrawingWindow& window) {
 	window.clearPixels();
 	std::vector<ModelTriangle> modelTriangles = objReader();
 
@@ -622,7 +622,7 @@ void draw(DrawingWindow &window) {
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
 		window.setPixelColour(light.x, light.y, lightColour);
 	}
-	
+
 	//render using ray tracing
 	if (renderMethod == "ray") {
 		for (int y = 0; y < HEIGHT; y++) {
@@ -645,7 +645,7 @@ void draw(DrawingWindow &window) {
 				float distanceToLight = glm::length(lightSource - rayIntersection.intersectionPoint);
 				float lightIntensity = 100 / (4.0 * pi * powf(distanceToLight, 2.0));
 				lightIntensity = clamp(0, 1, lightIntensity);
-				
+
 				//interpolating normals
 				glm::vec3 v0normal = triangle.v0Normal;
 				glm::vec3 v1normal = triangle.v1Normal;
@@ -695,10 +695,10 @@ void draw(DrawingWindow &window) {
 				glm::vec3 normal = glm::normalize(triangle.normal);
 				glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
 				lightDirection = glm::normalize(lightDirection);
-				
+
 				float AOI = glm::dot(lightDirection, normal);
 				AOI = clamp(AOI);*/
-				
+
 				//specular
 				/*
 				glm::vec3 Ri = rayIntersection.intersectionPoint - lightSource;
@@ -721,7 +721,7 @@ void draw(DrawingWindow &window) {
 				if (closestIntersect.distanceFromCamera < distanceToLight) {
 					brightnessModifier = triangle.Ka[0] * 0.2;
 				}
-				
+
 				Colour colour = triangle.colour;
 				//texture mapping
 				if (triangle.map_Kd == "checkerboardfloor.ppm" && texture) {
@@ -767,7 +767,7 @@ void draw(DrawingWindow &window) {
 					//check for internal reflection
 					if (reflectRefractRatio < 1) {
 						ray = glm::normalize(getRefractedRay(Ri, triangleNormal, refractiveIndex));
-						
+
 						glm::vec3 startPoint;
 						//check to see if we are inside or outside the object
 						if (glm::dot(Ri, triangleNormal) < 0) {
@@ -826,7 +826,7 @@ void draw(DrawingWindow &window) {
 					reflectionColour.red *= reflectRefractRatio;
 					reflectionColour.green *= reflectRefractRatio;
 					reflectionColour.blue *= reflectRefractRatio;
-					
+
 					refractionColour.red *= (1 - reflectRefractRatio);
 					refractionColour.green *= (1 - reflectRefractRatio);
 					refractionColour.blue *= (1 - reflectRefractRatio);
@@ -853,7 +853,7 @@ void draw(DrawingWindow &window) {
 	}
 }
 
-void handleEvent(SDL_Event event, DrawingWindow &window) {
+void handleEvent(SDL_Event event, DrawingWindow& window) {
 	if (event.type == SDL_KEYDOWN) {
 		//move light left
 		if (event.key.keysym.sym == SDLK_LEFT) {
@@ -953,13 +953,14 @@ void handleEvent(SDL_Event event, DrawingWindow &window) {
 				std::cout << "Texturing: Off" << std::endl;
 			}
 		}
-	} else if (event.type == SDL_MOUSEBUTTONDOWN) {
+	}
+	else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
 		window.saveBMP("output.bmp");
 	}
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
 	DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
 	while (true) {
