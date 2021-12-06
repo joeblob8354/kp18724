@@ -15,11 +15,11 @@
 #define WIDTH 320
 #define HEIGHT 240
 #define pi 3.14159265358979323846 
-std::string renderMethod = "raster";
+std::string renderMethod = "ray";
 std::string fileName = "scene";
 bool texture = false;
-std::string textureFile = "checkerboardfloor.ppm";
-std::string textureName = "Checkerboard";
+TextureMap checkerBoard("checkerboardfloor.ppm");
+TextureMap leopardPrint("leopardPrint.ppm");
 glm::vec3 cameraPosition(0.0, 0.0, 10.0);
 float scale = 75;
 float focalLength = 4;
@@ -28,46 +28,54 @@ glm::mat3 rotationMatrix(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 0,
 glm::mat3 cameraOrientation(glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0));
 glm::vec3 lightSource(0, 0.45, 0);
 
-std::pair <std::vector<Colour>, std::vector<TextureMap>> mtlReader() {
-	std::vector<std::string> colourNames;
-	std::vector<Colour> palette;
-	std::vector<TextureMap> texturePalette;
+struct MtlEntry {
+	std::string name = "Default";
+	float Ns = 128;
+	glm::vec3 Ka { 1.0, 1.0, 1.0 };
+	glm::vec3 Kd = { 1.0, 1.0, 1.0 };
+	float Ni = 1.45;
+	float d = 1.0;
+	std::string map_Kd = "Deafault";
+};
 
+std::vector<MtlEntry> mtlReader() {
+	std::vector<MtlEntry> mtlData;
+	MtlEntry entry;
 	std::ifstream file(fileName + ".mtl");
 	std::string line;
 	for (line; std::getline(file, line);) {
 		std::vector<std::string> tokens = split(line, ' ');
 		if (tokens[0] == "newmtl") {
-			colourNames.push_back(tokens[1]);
+			mtlData.push_back(entry);
+			entry.name = tokens[1];
+			entry.Ns = 128;
+			entry.Ka = { 1.0, 1.0, 1.0 };
+			entry.Kd = { 1.0, 1.0, 1.0 };
+			entry.Ni = 1.45;
+			entry.d = 1.0;
+			entry.map_Kd = "Default";
+		}
+		else if (tokens[0] == "Ns") {
+			entry.Ns = stof(tokens[1]);
+		}
+		else if (tokens[0] == "Ka") {
+			entry.Ka = { stof(tokens[1]), stof(tokens[2]), stof(tokens[3]) };
 		}
 		else if (tokens[0] == "Kd") {
-			float red, green, blue;
-			red = stof(tokens[1]);
-			green = stof(tokens[2]);
-			blue = stof(tokens[3]);
-			Colour myColour;
-			myColour.red = round(red * 255);
-			myColour.green = round(green * 255);
-			myColour.blue = round(blue * 255);
-			palette.push_back(myColour);
+			entry.Kd = { stof(tokens[1]), stof(tokens[2]), stof(tokens[3]) };
+		}
+		else if (tokens[0] == "Ni") {
+			entry.Ni = stof(tokens[1]);
+		}
+		else if (tokens[0] == "d") {
+			entry.d = stof(tokens[1]);
 		}
 		else if (tokens[0] == "map_Kd") {
-			std::string filename = tokens[1];
-			TextureMap texture(filename);
-			texturePalette.push_back(texture);
+			entry.map_Kd = tokens[1];
 		}
 	}
-
-	for (int i = 0; i < palette.size(); i++) {
-		palette[i].name = colourNames[i];
-	}
-	for (int i = 0; i < texturePalette.size(); i++) {
-		texturePalette[i].name = colourNames[i];
-	}
-	std::pair<std::vector<Colour>, std::vector<TextureMap>> res;
-	res.first = palette;
-	res.second = texturePalette;
-	return res;
+	mtlData.push_back(entry);
+	return mtlData;
 }
 
 std::pair<std::vector<glm::vec3>, std::vector<glm::vec3>> vertexTranslator(std::vector<unsigned int> faceVertices, std::vector<glm::vec3> vertices, std::vector<unsigned int> faceVertexNormals, std::vector<glm::vec3> vertexNormals) {
@@ -100,7 +108,7 @@ std::vector<TexturePoint> textureTranslator(std::vector<unsigned int> texturePoi
 	return outputTexturePoints;
 }
 
-std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, std::string colour, std::vector<Colour> palette, std::vector<TextureMap> texturePalette, std::vector<TexturePoint> texturePoints, std::vector<glm::vec3> vertexNormals) {
+std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, std::vector<TexturePoint> texturePoints, std::vector<glm::vec3> vertexNormals, MtlEntry objectMtlData) {
 	std::vector<ModelTriangle> modelTriangles;
 	Colour red;
 	red.red = 255;
@@ -114,29 +122,27 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 			myTriangle.vertices[0] = vertices[i];
 			myTriangle.vertices[1] = vertices[i1];
 			myTriangle.vertices[2] = vertices[i2];
-			for (int y = 0; y < palette.size(); y++) {
-				if (palette[y].name == colour) {
-					myTriangle.colour = palette[y];
-				}
-			}
+			myTriangle.colour.name = objectMtlData.name;
+			myTriangle.Ns = objectMtlData.Ns;
+			myTriangle.Ka = objectMtlData.Ka;
+			int red = objectMtlData.Kd[0] * 255;
+			int green = objectMtlData.Kd[1] * 255;
+			int blue = objectMtlData.Kd[2] * 255;
+			myTriangle.colour.red = red;
+			myTriangle.colour.green = green;
+			myTriangle.colour.blue = blue;
+			myTriangle.Ni = objectMtlData.Ni;
+			myTriangle.d = objectMtlData.d;
+			myTriangle.map_Kd = objectMtlData.map_Kd;
 			if (texturePoints.size() > 0) {
 				myTriangle.texturePoints[0] = texturePoints[i];
 				myTriangle.texturePoints[1] = texturePoints[i1];
 				myTriangle.texturePoints[2] = texturePoints[i2];
 			}
-			for (int y = 0; y < texturePalette.size(); y++) {
-				if (texturePalette[y].name == colour) {
-					TextureMap textureMap = texturePalette[y];
-					myTriangle.colour.name = colour;
-				}
-			}
 			if (vertexNormals.size() > 0) {
 				myTriangle.v0Normal = vertexNormals[i];
 				myTriangle.v1Normal = vertexNormals[i1];
 				myTriangle.v2Normal = vertexNormals[i2];
-			}
-			if (palette.size() == 0) {
-				myTriangle.colour = red;
 			}
 			modelTriangles.push_back(myTriangle);
 		}
@@ -146,10 +152,8 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 
 std::vector<ModelTriangle> objReader() {
 	std::string objectName;
-	std::string objectColour;
-	std::pair <std::vector<Colour>, std::vector<TextureMap>> mtlRes = mtlReader();
-	std::vector<Colour> palette = mtlRes.first;
-	std::vector<TextureMap> texturePalette = mtlRes.second;
+	std::vector<MtlEntry> mtlData = mtlReader();
+	MtlEntry objectMtlData;
 	std::vector<glm::vec3> vertices;
 	std::vector<TexturePoint> texturePoints;
 	std::vector<glm::vec3> vertexNormals;
@@ -169,7 +173,7 @@ std::vector<ModelTriangle> objReader() {
 			objectVertices = res.first;
 			objectVertexNormals = res.second;
 			std::vector<TexturePoint> objectTexturePoints = textureTranslator(texturePointIndexes, texturePoints);
-			std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette, texturePalette, objectTexturePoints, objectVertexNormals);
+			std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectTexturePoints, objectVertexNormals, objectMtlData);
 			for (int i = 0; i < objectTriangles.size(); i++) {
 				finalTriangles.push_back(objectTriangles[i]);
 			}
@@ -179,7 +183,11 @@ std::vector<ModelTriangle> objReader() {
 			objectName = tokens[1];
 		}
 		else if (tokens[0] == "usemtl") {
-			objectColour = tokens[1];
+			for (int i = 0; i < mtlData.size(); i++) {
+				if (mtlData[i].name == tokens[1]) {
+					objectMtlData = mtlData[i];
+				}
+			}
 		}
 		else if (tokens[0] == "v") {
 			glm::vec3 vertex;
@@ -230,7 +238,7 @@ std::vector<ModelTriangle> objReader() {
 	objectVertices = res.first;
 	objectVertexNormals = res.second;
 	std::vector<TexturePoint> objectTexturePoints = textureTranslator(texturePointIndexes, texturePoints);
-	std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectColour, palette, texturePalette, objectTexturePoints, objectVertexNormals);
+	std::vector<ModelTriangle> objectTriangles = modelTriangleMaker(objectVertices, objectTexturePoints, objectVertexNormals, objectMtlData);
 	for (int i = 0; i < objectTriangles.size(); i++) {
 		finalTriangles.push_back(objectTriangles[i]);
 	}
@@ -527,7 +535,6 @@ glm::vec3 getRefractedRay(glm::vec3 Ri, glm::vec3 normal, float refractiveIndex)
 	return refractedRay;
 }
 
-//finding ratio of light that is reflected vs refracted
 float getReflectRefractRatio(glm::vec3 Ri, glm::vec3 normal, float refractiveIndex) {
 
 	float rIndexOutside = 1;
@@ -610,7 +617,6 @@ void draw(DrawingWindow &window) {
 	
 	//render using ray tracing
 	if (renderMethod == "ray") {
-		TextureMap textureMap(textureFile);
 		for (int y = 0; y < HEIGHT; y++) {
 			for (int x = 0; x < WIDTH; x++) {
 
@@ -618,8 +624,9 @@ void draw(DrawingWindow &window) {
 				point.x = x;
 				point.y = y;
 				glm::vec3 ray = getRayDirection(point);
-				RayTriangleIntersection rayIntersection = getClosestIntersection(cameraPosition, modelTriangles, ray, -1, "");
+				RayTriangleIntersection rayIntersection = getClosestIntersection(cameraPosition, modelTriangles, ray, -1, "None");
 				ModelTriangle triangle = rayIntersection.intersectedTriangle;
+				glm::vec3 triangleNormal = glm::normalize(triangle.normal);
 
 				//calculating barycentric coords
 				float triangleArea = glm::length(glm::cross((triangle.vertices[1] - triangle.vertices[0]), (triangle.vertices[2] - triangle.vertices[0]))) / 2;
@@ -646,7 +653,7 @@ void draw(DrawingWindow &window) {
 				glm::vec3 Ri = glm::normalize(rayIntersection.intersectionPoint - lightSource);
 				glm::vec3 view = glm::normalize(cameraPosition - rayIntersection.intersectionPoint);
 				glm::vec3 Rr = glm::normalize(Ri - (pointNormal * 2.0f) * glm::dot(Ri, pointNormal));
-				float specular = clamp(0, 1, powf(glm::dot(Rr, view), 128.0));
+				float specular = clamp(0, 1, powf(glm::dot(Rr, view), triangle.Ns));
 
 				float diffuse = lightIntensity * 0.7 + AOI * 0.3;
 				float brightnessModifier = diffuse * 0.6 + specular * 0.4;
@@ -698,37 +705,37 @@ void draw(DrawingWindow &window) {
 
 				//ambient
 				if (brightnessModifier < 0.5) {
-					brightnessModifier = 0.5;
+					brightnessModifier = triangle.Ka[0] * 0.5;
 				}
 
 				//shadows
 				ray = lightSource - rayIntersection.intersectionPoint;
-				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex, "");
+				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex, "None");
 				if (closestIntersect.distanceFromCamera < distanceToLight) {
-					brightnessModifier = 0.2;
+					brightnessModifier = triangle.Ka[0] * 0.2;
 				}
-
+				
+				Colour colour = triangle.colour;
 				//texture mapping
-				Colour colour;
-				if (triangle.colour.name == textureName && texture) {
-					colour = getTextureColour(triangle, u, v, w, textureMap);
+				if (triangle.map_Kd == "checkerboardfloor.ppm" && texture) {
+					colour = getTextureColour(triangle, u, v, w, checkerBoard);
 				}
-				else
-				{
-					colour = triangle.colour;
+				else if (triangle.map_Kd == "leopardPrint.ppm" && texture) {
+					colour = getTextureColour(triangle, u, v, w, leopardPrint);
 				}
 
 				//mirrors
-				glm::vec3 triangleNormal = glm::normalize(triangle.normal);
 				//reflections
 				if (triangle.colour.name == "Mirror") {
 					Ri = glm::normalize(rayIntersection.intersectionPoint - cameraPosition);
 					Rr = glm::normalize(Ri - 2.0f * (glm::dot(Ri, triangleNormal) * triangleNormal));
-					RayTriangleIntersection reflectionRay = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "");
-					Colour reflectionColour;
-					reflectionColour = reflectionRay.intersectedTriangle.colour;
-					if (reflectionColour.name == textureName && texture) {
-						colour = getTextureColour(reflectionRay.intersectedTriangle, u, v, w, textureMap);
+					RayTriangleIntersection reflectionRay = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "None");
+					Colour reflectionColour = reflectionRay.intersectedTriangle.colour;
+					if (reflectionRay.intersectedTriangle.map_Kd == "checkerboardfloor.ppm" && texture) {
+						colour = getTextureColour(reflectionRay.intersectedTriangle, u, v, w, checkerBoard);
+					}
+					else if (reflectionRay.intersectedTriangle.map_Kd == "leopardPrint.ppm" && texture) {
+						colour = getTextureColour(reflectionRay.intersectedTriangle, u, v, w, leopardPrint);
 					}
 					else
 					{
@@ -737,10 +744,10 @@ void draw(DrawingWindow &window) {
 				}
 
 				//glas objects
-				if (triangle.colour.name == "Glass") {
+				if (triangle.d == 0.0) {
 					//refraction
 					glm::vec3 bias = 0.1f * triangleNormal;
-					float refractiveIndex = 1.4;
+					float refractiveIndex = triangle.Ni;
 					glm::vec3 Ri = glm::normalize(rayIntersection.intersectionPoint - cameraPosition);
 					float reflectRefractRatio = getReflectRefractRatio(Ri, triangleNormal, refractiveIndex);
 
@@ -755,10 +762,19 @@ void draw(DrawingWindow &window) {
 							startPoint = rayIntersection.intersectionPoint + bias;
 						}
 						RayTriangleIntersection refractedIntersect = getClosestIntersection(startPoint, modelTriangles, ray, rayIntersection.triangleIndex, "Glass");
-						refractionColour = refractedIntersect.intersectedTriangle.colour;
+						if (refractedIntersect.intersectedTriangle.map_Kd == "checkerboardfloor.ppm" && texture) {
+							refractionColour = getTextureColour(refractedIntersect.intersectedTriangle, u, v, w, checkerBoard);
+						}
+						else if (refractedIntersect.intersectedTriangle.map_Kd == "leopardPrint.ppm" && texture) {
+							refractionColour = getTextureColour(refractedIntersect.intersectedTriangle, u, v, w, leopardPrint);
+						}
+						else
+						{
+							refractionColour = refractedIntersect.intersectedTriangle.colour;
+						}
 					}
 					else {
-						refractionColour.red = refractionColour.green = refractionColour.blue = 0;
+						refractionColour.red = colour.green = colour.blue = 0;
 					}
 
 					//reflection
@@ -771,8 +787,18 @@ void draw(DrawingWindow &window) {
 					{
 						startPoint = rayIntersection.intersectionPoint - bias;
 					}
-					RayTriangleIntersection reflectedIntersect = getClosestIntersection(startPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "");
-					Colour reflectionColour = reflectedIntersect.intersectedTriangle.colour;
+					RayTriangleIntersection reflectedIntersect = getClosestIntersection(startPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "None");
+					Colour reflectionColour;
+					if (reflectedIntersect.intersectedTriangle.map_Kd == "checkerboardfloor.ppm" && texture) {
+						reflectionColour = getTextureColour(reflectedIntersect.intersectedTriangle, u, v, w, checkerBoard);
+					}
+					else if (reflectedIntersect.intersectedTriangle.map_Kd == "leopardPrint.ppm" && texture) {
+						reflectionColour = getTextureColour(reflectedIntersect.intersectedTriangle, u, v, w, leopardPrint);
+					}
+					else
+					{
+						reflectionColour = reflectedIntersect.intersectedTriangle.colour;
+					}
 
 					reflectionColour.red *= reflectRefractRatio;
 					reflectionColour.green *= reflectRefractRatio;
@@ -790,7 +816,8 @@ void draw(DrawingWindow &window) {
 				colour.red *= brightnessModifier;
 				colour.green *= brightnessModifier;
 				colour.blue *= brightnessModifier;
-				uint32_t RGBcolour = (0 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
+
+				uint32_t RGBcolour = (255 << 24) + (colour.red << 16) + (colour.green << 8) + colour.blue;
 				window.setPixelColour(x, y, RGBcolour);
 			}
 		}
