@@ -17,18 +17,18 @@
 #define HEIGHT 480
 #define pi 3.14159265358979323846 
 std::string renderMethod = "wire";
-std::string fileName = "centered-sphere";
+std::string fileName = "scene6";
 bool texture = false;
 TextureMap checkerBoard("checkerboardfloor.ppm");
 TextureMap leopardPrint("leopardPrint.ppm");
 float lightYDiff = 0;
-glm::vec3 cameraPosition(0.0, 0.0, 8.0);
+glm::vec3 cameraPosition(0.0, 0.0, 4.0);
 float scale = 75;
 float focalLength = 4;
 float depthBuffer[HEIGHT][WIDTH];
 glm::mat3 rotationMatrix(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
 glm::mat3 cameraOrientation(glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0));
-glm::vec3 lightSource(0, 1.95, 0);
+glm::vec3 lightSource(0, 1, 2);
 
 struct MtlEntry {
 	std::string name = "Default";
@@ -125,9 +125,12 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 			myTriangle.vertices[1] = vertices[i1];
 			myTriangle.vertices[2] = vertices[i2];
 			if (objectMtlData.name == "Light") {
-				myTriangle.vertices[0].y -= lightYDiff;
-				myTriangle.vertices[1].y -= lightYDiff;
-				myTriangle.vertices[2].y -= lightYDiff;
+				myTriangle.vertices[0].y += 2;
+				myTriangle.vertices[1].y += 2;
+				myTriangle.vertices[2].y += 2;
+				myTriangle.vertices[0].z += 2;
+				myTriangle.vertices[1].z += 2;
+				myTriangle.vertices[2].z += 2;
 			}
 			myTriangle.colour.name = objectMtlData.name;
 			myTriangle.Ns = objectMtlData.Ns;
@@ -612,7 +615,7 @@ void draw(DrawingWindow& window, std::vector<ModelTriangle> modelTriangles) {
 		CanvasPoint light;
 		light = getCanvasIntersectionPoint(lightSource);
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
-		window.setPixelColour(light.x, light.y, lightColour);
+		//window.setPixelColour(light.x, light.y, lightColour);
 	}
 
 	//render using rasterisation
@@ -683,7 +686,7 @@ void draw(DrawingWindow& window, std::vector<ModelTriangle> modelTriangles) {
 				float specular = clamp(0, 1, powf(glm::dot(Rr, view), triangle.Ns));
 
 				float diffuse = lightIntensity * 0.7 + AOI * 0.3;
-				float brightnessModifier = diffuse * 0.8 + specular * 0.2;
+				float brightnessModifier = diffuse * 0.6 + specular * 0.4;
 
 				//gouraud AOI
 				/*glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
@@ -870,7 +873,7 @@ void draw(DrawingWindow& window, std::vector<ModelTriangle> modelTriangles) {
 		CanvasPoint light;
 		light = getCanvasIntersectionPoint(lightSource);
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
-		window.setPixelColour(light.x, light.y, lightColour);
+		//window.setPixelColour(light.x, light.y, lightColour);
 	}
 }
 
@@ -1107,7 +1110,7 @@ void scene4(DrawingWindow& window) {
 	}
 }
 
-
+//panning accross a glass logo. Demonstrating refractive materials
 void scene5(DrawingWindow& window) {
 
 	std::vector<ModelTriangle> modelTriangles = objReader();
@@ -1167,8 +1170,23 @@ void scene5(DrawingWindow& window) {
 	}
 }
 
+//orbit of a raytraced sphere shaded using phong
 void scene6(DrawingWindow& window) {
+	
+	std::vector<ModelTriangle> modelTriangles = objReader();
+	glm::vec3 lookAtP(0, 0, 0);
+	glm::vec3 startP(0, 0, 4);
+	cameraPosition = startP;
+	rotationMatrix = glm::mat3(glm::vec3(cos(pi / 64), 0, -sin(pi / 64)), glm::vec3(0, 1, 0), glm::vec3(sin(pi / 64), 0, cos(pi / 64)));
 
+	for (int i = 0; i < 128 ; i++) {
+		cameraPosition = rotationMatrix * cameraPosition;
+		lookAt(lookAtP);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part1_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
 }
 
 void handleEvent(SDL_Event event, DrawingWindow& window) {
@@ -1293,7 +1311,8 @@ void handleEvent(SDL_Event event, DrawingWindow& window) {
 			//scene2(window);
 			//scene3(window);
 			//scene4(window);
-			scene5(window);
+			//scene5(window);
+			scene6(window);
 		}
 	}
 	else if (event.type == SDL_MOUSEBUTTONDOWN) {
