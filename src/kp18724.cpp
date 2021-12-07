@@ -11,22 +11,24 @@
 #include <ModelTriangle.h>
 #include <RayTriangleIntersection.h>
 #include <algorithm>
+#include <iostream>
 
-#define WIDTH 320
-#define HEIGHT 240
+#define WIDTH 640
+#define HEIGHT 480
 #define pi 3.14159265358979323846 
 std::string renderMethod = "wire";
 std::string fileName = "centered-sphere";
 bool texture = false;
 TextureMap checkerBoard("checkerboardfloor.ppm");
 TextureMap leopardPrint("leopardPrint.ppm");
-glm::vec3 cameraPosition(0.0, 0.0, 10.0);
+float lightYDiff = 0;
+glm::vec3 cameraPosition(0.0, 0.0, 8.0);
 float scale = 75;
 float focalLength = 4;
 float depthBuffer[HEIGHT][WIDTH];
 glm::mat3 rotationMatrix(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
 glm::mat3 cameraOrientation(glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0));
-glm::vec3 lightSource(0, 0.45, 0);
+glm::vec3 lightSource(0, 1.95, 0);
 
 struct MtlEntry {
 	std::string name = "Default";
@@ -122,6 +124,11 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 			myTriangle.vertices[0] = vertices[i];
 			myTriangle.vertices[1] = vertices[i1];
 			myTriangle.vertices[2] = vertices[i2];
+			if (objectMtlData.name == "Light") {
+				myTriangle.vertices[0].y -= lightYDiff;
+				myTriangle.vertices[1].y -= lightYDiff;
+				myTriangle.vertices[2].y -= lightYDiff;
+			}
 			myTriangle.colour.name = objectMtlData.name;
 			myTriangle.Ns = objectMtlData.Ns;
 			myTriangle.Ka = objectMtlData.Ka;
@@ -248,7 +255,19 @@ std::vector<ModelTriangle> objReader() {
 	return finalTriangles;
 }
 
+float clamp(float min, float max, float val) {
+	if (val > max) {
+		val = max;
+	}
+	if (val < min) {
+		val = min;
+	}
+	return val;
+}
+
+
 void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, uint32_t colour) {
+
 	float xDiff = from.x - to.x;
 	float yDiff = from.y - to.y;
 	float depthDiff = 1 / from.depth - 1 / to.depth;
@@ -295,7 +314,7 @@ glm::vec3 getRayIntersection(glm::vec3 cameraPosition, ModelTriangle triangle, g
 	return possibleSolution;
 }
 
-RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, std::vector<ModelTriangle> modelTriangles, glm::vec3 ray, float triangleIndex, std::string ignoredObject) {
+RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, std::vector<ModelTriangle> modelTriangles, glm::vec3 ray, float triangleIndex, std::string ignoredObject, float minDistance) {
 	ray = glm::normalize(ray);
 	std::vector<RayTriangleIntersection> rayTriangleIntersections;
 	for (int i = 0; i < modelTriangles.size(); i++) {
@@ -313,7 +332,7 @@ RayTriangleIntersection getClosestIntersection(glm::vec3 cameraPosition, std::ve
 			rayTriangleIntersection.intersectedTriangle = modelTriangles[i];
 			rayTriangleIntersection.intersectionPoint = modelTriangles[i].vertices[0] + u * e0 + v * e1;
 			rayTriangleIntersection.triangleIndex = i;
-			if (i != triangleIndex && rayTriangleIntersection.intersectedTriangle.colour.name != ignoredObject) {
+			if (i != triangleIndex && rayTriangleIntersection.intersectedTriangle.colour.name != ignoredObject && rayTriangleIntersection.distanceFromCamera > minDistance) {
 				rayTriangleIntersections.push_back(rayTriangleIntersection);
 			}
 		}
@@ -463,16 +482,6 @@ void lookAt(glm::vec3 pointToLookAt) {
 	cameraOrientation[2] = glm::normalize(cameraOrientation[2]);
 }
 
-float clamp(float min, float max, float val) {
-	if (val > max) {
-		val = max;
-	}
-	if (val < min) {
-		val = min;
-	}
-	return val;
-}
-
 Colour getColour(uint32_t RGBcolour) {
 	uint32_t alphaOffset{ 0x20 };
 	uint32_t redOffset{ 0x10 };
@@ -569,13 +578,14 @@ float getReflectRefractRatio(glm::vec3 Ri, glm::vec3 normal, float refractiveInd
 	return reflectRefractRatio;
 }
 
-void draw(DrawingWindow& window) {
+void draw(DrawingWindow& window, std::vector<ModelTriangle> modelTriangles) {
 	window.clearPixels();
-	std::vector<ModelTriangle> modelTriangles = objReader();
 
+	glm::vec3 lookAtP(0,0,0);
+	lookAt(lookAtP);
 	CanvasPoint lookAtPoint;
-	lookAtPoint = getCanvasIntersectionPoint(glm::vec3(0, 0, 0));
-	uint32_t lookAtPointColour = (255 << 24) + (255 << 16) + (0 << 8) + 0;
+	lookAtPoint = getCanvasIntersectionPoint(lookAtP);
+	uint32_t lookAtPointColour = (255 << 24) + (0 << 16) + (255 << 8) + 0;
 	window.setPixelColour(lookAtPoint.x, lookAtPoint.y, lookAtPointColour);
 
 	//render wireframe
@@ -598,6 +608,11 @@ void draw(DrawingWindow& window) {
 			triangle.vertices[2] = vertex2;
 			drawStrokedTriangle(window, triangle, white);
 		}
+		//light position in scene
+		CanvasPoint light;
+		light = getCanvasIntersectionPoint(lightSource);
+		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
+		window.setPixelColour(light.x, light.y, lightColour);
 	}
 
 	//render using rasterisation
@@ -625,7 +640,7 @@ void draw(DrawingWindow& window) {
 		CanvasPoint light;
 		light = getCanvasIntersectionPoint(lightSource);
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
-		window.setPixelColour(light.x, light.y, lightColour);
+		//window.setPixelColour(light.x, light.y, lightColour);
 	}
 
 	//render using ray tracing
@@ -637,7 +652,7 @@ void draw(DrawingWindow& window) {
 				point.x = x;
 				point.y = y;
 				glm::vec3 ray = getRayDirection(point);
-				RayTriangleIntersection rayIntersection = getClosestIntersection(cameraPosition, modelTriangles, ray, -1, "None");
+				RayTriangleIntersection rayIntersection = getClosestIntersection(cameraPosition, modelTriangles, ray, -1, "None", 0);
 				ModelTriangle triangle = rayIntersection.intersectedTriangle;
 				glm::vec3 triangleNormal = glm::normalize(triangle.normal);
 
@@ -668,7 +683,7 @@ void draw(DrawingWindow& window) {
 				float specular = clamp(0, 1, powf(glm::dot(Rr, view), triangle.Ns));
 
 				float diffuse = lightIntensity * 0.7 + AOI * 0.3;
-				float brightnessModifier = diffuse * 0.6 + specular * 0.4;
+				float brightnessModifier = diffuse * 0.8 + specular * 0.2;
 
 				//gouraud AOI
 				/*glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
@@ -716,15 +731,15 @@ void draw(DrawingWindow& window) {
 				specular = clamp(specular);*/
 
 				//ambient
-				if (brightnessModifier < 0.5) {
-					brightnessModifier = triangle.Ka[0] * 0.5;
+				if (brightnessModifier < 0.4) {
+					brightnessModifier = triangle.Ka[0] * 0.4;
 				}
 
 				//shadows
 				ray = lightSource - rayIntersection.intersectionPoint;
-				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex, "None");
+				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex, "Light", 1);
 				if (closestIntersect.distanceFromCamera < distanceToLight) {
-					brightnessModifier = triangle.Ka[0] * 0.2;
+					brightnessModifier = triangle.Ka[0] * 0.1;
 				}
 
 				Colour colour = triangle.colour;
@@ -742,7 +757,7 @@ void draw(DrawingWindow& window) {
 					Ri = glm::normalize(rayIntersection.intersectionPoint - cameraPosition);
 					Rr = glm::normalize(Ri - 2.0f * (glm::dot(Ri, triangleNormal) * triangleNormal));
 
-					RayTriangleIntersection reflectionRay = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "None");
+					RayTriangleIntersection reflectionRay = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "None", 0);
 					if (reflectionRay.intersectedTriangle.map_Kd == "checkerboardfloor.ppm" && texture) {
 						glm::vec3 reflectionTriangleBarycentrics = getBraycentric(reflectionRay.intersectedTriangle, reflectionRay.intersectionPoint);
 						colour = getTextureColour(reflectionRay.intersectedTriangle, reflectionTriangleBarycentrics[0], reflectionTriangleBarycentrics[1], reflectionTriangleBarycentrics[2], checkerBoard);
@@ -782,7 +797,7 @@ void draw(DrawingWindow& window) {
 							startPoint = rayIntersection.intersectionPoint + bias;
 						}
 
-						RayTriangleIntersection refractedIntersect = getClosestIntersection(startPoint, modelTriangles, ray, rayIntersection.triangleIndex, "Glass");
+						RayTriangleIntersection refractedIntersect = getClosestIntersection(startPoint, modelTriangles, ray, rayIntersection.triangleIndex, "Glass", 0);
 						if (refractedIntersect.intersectedTriangle.map_Kd == "checkerboardfloor.ppm" && texture) {
 							glm::vec3 refractionTriangleBarycentrics = getBraycentric(refractedIntersect.intersectedTriangle, refractedIntersect.intersectionPoint);
 							refractionColour = getTextureColour(refractedIntersect.intersectedTriangle, refractionTriangleBarycentrics[0], refractionTriangleBarycentrics[1], refractionTriangleBarycentrics[2], checkerBoard);
@@ -814,7 +829,7 @@ void draw(DrawingWindow& window) {
 						startPoint = rayIntersection.intersectionPoint - bias;
 					}
 
-					RayTriangleIntersection reflectedIntersect = getClosestIntersection(startPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "None");
+					RayTriangleIntersection reflectedIntersect = getClosestIntersection(startPoint, modelTriangles, Rr, rayIntersection.triangleIndex, "None", 0);
 					if (reflectedIntersect.intersectedTriangle.map_Kd == "checkerboardfloor.ppm" && texture) {
 						glm::vec3 reflectionTriangleBarycentrics = getBraycentric(reflectedIntersect.intersectedTriangle, reflectedIntersect.intersectionPoint);
 						reflectionColour = getTextureColour(reflectedIntersect.intersectedTriangle, reflectionTriangleBarycentrics[0], reflectionTriangleBarycentrics[1], reflectionTriangleBarycentrics[2], checkerBoard);
@@ -841,6 +856,7 @@ void draw(DrawingWindow& window) {
 					colour.green = reflectionColour.green + refractionColour.green;
 					colour.blue = reflectionColour.blue + refractionColour.blue;
 				}
+				triangle.colour.name == "Light" ? brightnessModifier = 1 :
 
 				colour.red *= brightnessModifier;
 				colour.green *= brightnessModifier;
@@ -856,6 +872,303 @@ void draw(DrawingWindow& window) {
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
 		window.setPixelColour(light.x, light.y, lightColour);
 	}
+}
+
+std::vector<float> getStepSizes(glm::vec3 pos1, glm::vec3 pos2, float minNumberOfSteps) {
+	float xDiff = pos2.x - pos1.x;
+	float yDiff = pos2.y - pos1.y;
+	float zDiff = pos2.z - pos1.z;
+
+	float numberOfSteps = std::max(zDiff, std::max(abs(xDiff), abs(yDiff)));
+	minNumberOfSteps > numberOfSteps ? numberOfSteps = minNumberOfSteps : numberOfSteps = numberOfSteps;
+	
+	float xStepSize = xDiff / numberOfSteps;
+	float yStepSize = yDiff / numberOfSteps;
+	float zStepSize = zDiff / numberOfSteps;
+
+	return std::vector<float>{xStepSize, yStepSize, zStepSize, numberOfSteps};
+}
+
+//wirefram sphere oribit
+//use "sphere.obj"
+void scene1(DrawingWindow& window) {
+	std::vector<ModelTriangle> modelTriangles = objReader();
+
+	glm::vec3 startPos = { 4.7 ,0, 3 };
+	glm::vec3 pos2 = { 0, 0, 3 };
+	glm::vec3 pos3 = { -4.7 ,0, 3 };
+	cameraPosition = startPos;
+
+	std::vector<float> stepSizes = getStepSizes(startPos, pos2, 16);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = startPos[0] + stepSizes[0] * i;
+		cameraPosition[1] = startPos[1] + stepSizes[1] * i;
+		cameraPosition[2] = startPos[2] + stepSizes[2] * i;
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part1_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	for (int i = 0; i < 128; i++) {
+		draw(window, modelTriangles);
+		window.renderFrame();
+		rotationMatrix = glm::mat3(glm::vec3(cos(pi / 64), 0, -sin(pi / 64)), glm::vec3(0, 1, 0), glm::vec3(sin(pi / 64), 0, cos(pi / 64)));
+		cameraPosition = rotationMatrix * cameraPosition;
+		lookAt(glm::vec3(0,0,0));
+		std::string outputName = "part2_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(pos2, pos3, 16);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = pos2[0] + stepSizes[0] * i;
+		cameraPosition[1] = pos2[1] + stepSizes[1] * i;
+		cameraPosition[2] = pos2[2] + stepSizes[2] * i;
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part3_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+}
+
+//rasterised cornell box camera translation
+//use "cornell-box.obj"
+void scene2(DrawingWindow& window) {
+	std::vector<ModelTriangle> modelTriangles = objReader();
+
+	glm::vec3 startPos = { 14.2,0,8 };
+	glm::vec3 pos2 = { 0,0,8 };
+	cameraPosition = startPos;
+	glm::mat3 startOrientation(glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0));
+	cameraOrientation = startOrientation;
+
+	std::vector<float> stepSizes = getStepSizes(startPos, pos2, 16);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = startPos[0] + stepSizes[0] * i;
+		cameraPosition[1] = startPos[1] + stepSizes[1] * i;
+		cameraPosition[2] = startPos[2] + stepSizes[2] * i;
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part1_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	for (int i = 0; i < 32; i++) {
+		std::string outputName = "part2_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	cameraOrientation = startOrientation;
+	for (int i = 0; i < 20; i++) {
+		cameraOrientation = cameraOrientation * glm::mat3(glm::vec3(1, 0, 0), glm::vec3(0, cos(-pi / 64), sin(-pi / 64)), glm::vec3(0, -sin(-pi / 64), cos(-pi / 64)));
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part3_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+}
+
+//multi-waypoint camera tracking through ray traced scene. Mirror box, diffuse, AOI, and specular lighting
+// use "scene3.obj"
+void scene3(DrawingWindow& window) {
+	std::vector<ModelTriangle> modelTriangles = objReader();
+
+	glm::vec3 lookAtP0(0, 0, 0);
+	glm::vec3 lookAtP1(0.9, -1.75, 1.1);
+	glm::vec3 startPos(0, 0, 8);
+	glm::vec3 pos2(0.7, 1.1, 1);
+	glm::vec3 pos3(2, 0.9, -1.4);
+	glm::vec3 lookAtP2(-0.9, 0, -0.5);
+	glm::vec3 pos4(-0.5, 1.9, -2.1);
+	glm::vec3 pos5(-2.5, 1.9, -1.4);
+	glm::vec3 pos6(-2.1, 1.9, 2.3);
+	glm::vec3 lookAtP3(0, 0, 0);
+	cameraPosition = startPos;
+
+	std::vector<float>stepSizes = getStepSizes(lookAtP0, lookAtP1, 8);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		lookAt(glm::vec3(lookAtP0[0] + stepSizes[0] * i, lookAtP0[1] + stepSizes[1] * i, lookAtP0[2] + stepSizes[2] * i));
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part0_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(startPos, pos2, 24);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = startPos[0] + stepSizes[0] * i;
+		cameraPosition[1] = startPos[1] + stepSizes[1] * i;
+		cameraPosition[2] = startPos[2] + stepSizes[2] * i;
+		lookAt(lookAtP1);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part1_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(pos2, pos3, 16);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = pos2[0] + stepSizes[0] * i;
+		cameraPosition[1] = pos2[1] + stepSizes[1] * i;
+		cameraPosition[2] = pos2[2] + stepSizes[2] * i;
+		lookAt(lookAtP1);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part2_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(lookAtP1, lookAtP2, 8);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		lookAt(glm::vec3(lookAtP1[0] + stepSizes[0] * i, lookAtP1[1] + stepSizes[1] * i, lookAtP1[2] + stepSizes[2] * i));
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part3_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(pos3, pos4, 16);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = pos3[0] + stepSizes[0] * i;
+		cameraPosition[1] = pos3[1] + stepSizes[1] * i;
+		cameraPosition[2] = pos3[2] + stepSizes[2] * i;
+		lookAt(lookAtP2);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part4_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(pos4, pos5, 16);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = pos4[0] + stepSizes[0] * i;
+		cameraPosition[1] = pos4[1] + stepSizes[1] * i;
+		cameraPosition[2] = pos4[2] + stepSizes[2] * i;
+		lookAt(lookAtP2);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part5_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(pos5, pos6, 24);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = pos5[0] + stepSizes[0] * i;
+		cameraPosition[1] = pos5[1] + stepSizes[1] * i;
+		cameraPosition[2] = pos5[2] + stepSizes[2] * i;
+		lookAt(lookAtP2);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part6_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(lookAtP2, lookAtP3, 8);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		lookAt(glm::vec3(lookAtP2[0] + stepSizes[0] * i, lookAtP2[1] + stepSizes[1] * i, lookAtP2[2] + stepSizes[2] * i));
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part7_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(pos6, startPos, 32);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = pos6[0] + stepSizes[0] * i;
+		cameraPosition[1] = pos6[1] + stepSizes[1] * i;
+		cameraPosition[2] = pos6[2] + stepSizes[2] * i;
+		lookAt(lookAtP3);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part8_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+}
+
+//light decending through the scene. Better demonstation of all lighting techniques
+//use "scene3.obj"
+void scene4(DrawingWindow& window) {
+	glm::vec3 lightStartPos(0, 1.95, 0);
+	glm::vec3 lightEndPos(0, -3, 0);
+	lightSource = lightStartPos;
+
+	std::vector<float>stepSizes = getStepSizes(lightStartPos, lightEndPos, 32);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		lightSource[0] = lightStartPos[0] + stepSizes[0] * i;
+		lightSource[1] = lightStartPos[1] + stepSizes[1] * i;
+		lightSource[2] = lightStartPos[2] + stepSizes[2] * i;
+		std::vector<ModelTriangle> modelTriangles = objReader();
+		draw(window, modelTriangles);
+		window.renderFrame();
+		lightYDiff += 0.15469;
+		std::string outputName = "part1_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+}
+
+
+void scene5(DrawingWindow& window) {
+
+	std::vector<ModelTriangle> modelTriangles = objReader();
+	glm::vec3 startPos(0, 0, 6.3);
+	glm::vec3 lookAtP(0, 0, 0);
+	glm::vec3 pos2(-3.5,0,5.24);
+	glm::vec3 pos3(0, 0, 6.3);
+	glm::vec3 pos4(4, 0, 4.87);
+	glm::vec3 pos5(0, 0, 6.3);
+
+	std::vector<float> stepSizes = getStepSizes(startPos, pos2, 32);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = startPos[0] + stepSizes[0] * i;
+		cameraPosition[1] = startPos[1] + stepSizes[1] * i;
+		cameraPosition[2] = startPos[2] + stepSizes[2] * i;
+		lookAt(lookAtP);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part1_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(pos2, pos3, 32);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = pos2[0] + stepSizes[0] * i;
+		cameraPosition[1] = pos2[1] + stepSizes[1] * i;
+		cameraPosition[2] = pos2[2] + stepSizes[2] * i;
+		lookAt(lookAtP);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part2_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(pos3, pos4, 32);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = pos3[0] + stepSizes[0] * i;
+		cameraPosition[1] = pos3[1] + stepSizes[1] * i;
+		cameraPosition[2] = pos3[2] + stepSizes[2] * i;
+		lookAt(lookAtP);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part3_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+
+	stepSizes = getStepSizes(pos4, pos5, 32);
+	for (int i = 0; i < stepSizes[3] + 1; i++) {
+		cameraPosition[0] = pos4[0] + stepSizes[0] * i;
+		cameraPosition[1] = pos4[1] + stepSizes[1] * i;
+		cameraPosition[2] = pos4[2] + stepSizes[2] * i;
+		lookAt(lookAtP);
+		draw(window, modelTriangles);
+		window.renderFrame();
+		std::string outputName = "part4_" + std::to_string(i) + ".bmp";
+		window.saveBMP(outputName);
+	}
+}
+
+void scene6(DrawingWindow& window) {
+
 }
 
 void handleEvent(SDL_Event event, DrawingWindow& window) {
@@ -902,11 +1215,11 @@ void handleEvent(SDL_Event event, DrawingWindow& window) {
 		}
 		//move camera in
 		else if (event.key.keysym.sym == SDLK_PERIOD) {
-			cameraPosition[2] = cameraPosition[2] - 1;
+			cameraPosition[2] = cameraPosition[2] - 0.1;
 		}
 		//move camera out
 		else if (event.key.keysym.sym == SDLK_COMMA) {
-			cameraPosition[2] = cameraPosition[2] + 1;
+			cameraPosition[2] = cameraPosition[2] + 0.1;
 		}
 		//rotate + about x-axis
 		else if (event.key.keysym.sym == SDLK_RIGHTBRACKET) {
@@ -931,6 +1244,22 @@ void handleEvent(SDL_Event event, DrawingWindow& window) {
 			rotationMatrix = glm::mat3(glm::vec3(cos(-pi / 64), 0, -sin(-pi / 64)), glm::vec3(0, 1, 0), glm::vec3(sin(-pi / 64), 0, cos(-pi / 64)));
 			cameraPosition = rotationMatrix * cameraPosition;
 			lookAt(glm::vec3(0, 0, 0));
+		}
+		//tilt camera down
+		else if (event.key.keysym.sym == SDLK_g) {
+			cameraOrientation = cameraOrientation * glm::mat3(glm::vec3(1, 0, 0), glm::vec3(0, cos(-pi / 64), sin(-pi / 64)), glm::vec3(0, -sin(-pi / 64), cos(-pi / 64)));
+		}
+		//tilt camera up
+		else if (event.key.keysym.sym == SDLK_h) {
+			cameraOrientation = cameraOrientation * glm::mat3(glm::vec3(1, 0, 0), glm::vec3(0, cos(pi / 64), sin(pi / 64)), glm::vec3(0, -sin(pi / 64), cos(pi / 64)));
+		}
+		//tilt camera left
+		else if (event.key.keysym.sym == SDLK_j) {
+			cameraOrientation = cameraOrientation * glm::mat3(glm::vec3(cos(pi / 64), 0, -sin(pi / 64)), glm::vec3(0, 1, 0), glm::vec3(sin(pi / 64), 0, cos(pi / 64)));
+		}
+		//tilt camera right
+		else if (event.key.keysym.sym == SDLK_k) {
+			cameraOrientation = cameraOrientation * glm::mat3(glm::vec3(cos(-pi / 64), 0, -sin(-pi / 64)), glm::vec3(0, 1, 0), glm::vec3(sin(-pi / 64), 0, cos(-pi / 64)));
 		}
 		//render using rasterising
 		else if (event.key.keysym.sym == SDLK_r) {
@@ -958,6 +1287,14 @@ void handleEvent(SDL_Event event, DrawingWindow& window) {
 				std::cout << "Texturing: Off" << std::endl;
 			}
 		}
+		//scene
+		else if (event.key.keysym.sym == SDLK_v) {
+			//scene1(window);
+			//scene2(window);
+			//scene3(window);
+			//scene4(window);
+			scene5(window);
+		}
 	}
 	else if (event.type == SDL_MOUSEBUTTONDOWN) {
 		window.savePPM("output.ppm");
@@ -968,11 +1305,14 @@ void handleEvent(SDL_Event event, DrawingWindow& window) {
 int main(int argc, char* argv[]) {
 	DrawingWindow window = DrawingWindow(WIDTH, HEIGHT, false);
 	SDL_Event event;
+	std::vector<ModelTriangle> modelTriangles = objReader();
 	while (true) {
 		// We MUST poll for events - otherwise the window will freeze !
 		if (window.pollForInputEvents(event)) handleEvent(event, window);
-		draw(window);
+		draw(window, modelTriangles);
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
+		//std::cout << lightSource[0] << "," << lightSource[1] << "," << lightSource[2] << std::endl;
+		//std::cout << cameraPosition[0] << "," << cameraPosition[1] << "," << cameraPosition[2] << std::endl;
 	}
 }
