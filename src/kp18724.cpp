@@ -17,12 +17,12 @@
 #define HEIGHT 480
 #define pi 3.14159265358979323846 
 std::string renderMethod = "wire";
-std::string fileName = "scene6";
+std::string fileName = "scene3";
 bool texture = false;
 TextureMap checkerBoard("checkerboardfloor.ppm");
 TextureMap leopardPrint("leopardPrint.ppm");
 float lightYDiff = 0;
-glm::vec3 cameraPosition(0.0, 0.0, 4.0);
+glm::vec3 cameraPosition(0.0, 0.0, 8.0);
 float scale = 75;
 float focalLength = 4;
 float depthBuffer[HEIGHT][WIDTH];
@@ -124,13 +124,14 @@ std::vector<ModelTriangle> modelTriangleMaker(std::vector<glm::vec3> vertices, s
 			myTriangle.vertices[0] = vertices[i];
 			myTriangle.vertices[1] = vertices[i1];
 			myTriangle.vertices[2] = vertices[i2];
+			//set light sphere position offset
 			if (objectMtlData.name == "Light") {
-				myTriangle.vertices[0].y += 2;
-				myTriangle.vertices[1].y += 2;
-				myTriangle.vertices[2].y += 2;
-				myTriangle.vertices[0].z += 2;
-				myTriangle.vertices[1].z += 2;
-				myTriangle.vertices[2].z += 2;
+				myTriangle.vertices[0].y += 0;
+				myTriangle.vertices[1].y += 0;
+				myTriangle.vertices[2].y += 0;
+				myTriangle.vertices[0].z += 0;
+				myTriangle.vertices[1].z += 0;
+				myTriangle.vertices[2].z += 0;
 			}
 			myTriangle.colour.name = objectMtlData.name;
 			myTriangle.Ns = objectMtlData.Ns;
@@ -267,7 +268,6 @@ float clamp(float min, float max, float val) {
 	}
 	return val;
 }
-
 
 void drawLine(DrawingWindow& window, CanvasPoint from, CanvasPoint to, uint32_t colour) {
 
@@ -486,13 +486,11 @@ void lookAt(glm::vec3 pointToLookAt) {
 }
 
 Colour getColour(uint32_t RGBcolour) {
-	uint32_t alphaOffset{ 0x20 };
 	uint32_t redOffset{ 0x10 };
 	uint32_t greenOffset{ 0x08 };
 	uint32_t blueOffset{ 0x00 };
 
 	uint32_t byteMask{ 0xFF };
-	uint32_t alphaMask{ byteMask << alphaOffset };
 	uint32_t redMask{ byteMask << redOffset };
 	uint32_t greenMask{ byteMask << greenOffset };
 	uint32_t blueMask{ byteMask << blueOffset };
@@ -612,10 +610,10 @@ void draw(DrawingWindow& window, std::vector<ModelTriangle> modelTriangles) {
 			drawStrokedTriangle(window, triangle, white);
 		}
 		//light position in scene
-		CanvasPoint light;
+		/*CanvasPoint light;
 		light = getCanvasIntersectionPoint(lightSource);
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
-		//window.setPixelColour(light.x, light.y, lightColour);
+		//window.setPixelColour(light.x, light.y, lightColour);*/
 	}
 
 	//render using rasterisation
@@ -640,10 +638,10 @@ void draw(DrawingWindow& window, std::vector<ModelTriangle> modelTriangles) {
 			drawFilledTriangle(window, canvasTriangle, RGBcolour);
 			drawStrokedTriangle(window, canvasTriangle, RGBcolour);
 		}
-		CanvasPoint light;
+		/*CanvasPoint light;
 		light = getCanvasIntersectionPoint(lightSource);
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
-		//window.setPixelColour(light.x, light.y, lightColour);
+		//window.setPixelColour(light.x, light.y, lightColour);*/
 	}
 
 	//render using ray tracing
@@ -740,12 +738,13 @@ void draw(DrawingWindow& window, std::vector<ModelTriangle> modelTriangles) {
 
 				//shadows
 				ray = lightSource - rayIntersection.intersectionPoint;
-				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex, "Light", 1);
+				RayTriangleIntersection closestIntersect = getClosestIntersection(rayIntersection.intersectionPoint, modelTriangles, ray, rayIntersection.triangleIndex, "Light", 0);
 				if (closestIntersect.distanceFromCamera < distanceToLight) {
 					brightnessModifier = triangle.Ka[0] * 0.1;
 				}
 
 				Colour colour = triangle.colour;
+
 				//texture mapping
 				if (triangle.map_Kd == "checkerboardfloor.ppm" && texture) {
 					colour = getTextureColour(triangle, u, v, w, checkerBoard);
@@ -869,11 +868,11 @@ void draw(DrawingWindow& window, std::vector<ModelTriangle> modelTriangles) {
 				window.setPixelColour(x, y, RGBcolour);
 			}
 		}
-		//light position in scene
+		/*//light position in scene
 		CanvasPoint light;
 		light = getCanvasIntersectionPoint(lightSource);
 		uint32_t lightColour = (255 << 24) + (255 << 16) + (255 << 8) + 255;
-		//window.setPixelColour(light.x, light.y, lightColour);
+		//window.setPixelColour(light.x, light.y, lightColour);*/
 	}
 }
 
@@ -883,7 +882,9 @@ std::vector<float> getStepSizes(glm::vec3 pos1, glm::vec3 pos2, float minNumberO
 	float zDiff = pos2.z - pos1.z;
 
 	float numberOfSteps = std::max(zDiff, std::max(abs(xDiff), abs(yDiff)));
-	minNumberOfSteps > numberOfSteps ? numberOfSteps = minNumberOfSteps : numberOfSteps = numberOfSteps;
+	if (minNumberOfSteps > numberOfSteps) {
+		numberOfSteps = minNumberOfSteps;
+	} 
 	
 	float xStepSize = xDiff / numberOfSteps;
 	float yStepSize = yDiff / numberOfSteps;
@@ -892,8 +893,8 @@ std::vector<float> getStepSizes(glm::vec3 pos1, glm::vec3 pos2, float minNumberO
 	return std::vector<float>{xStepSize, yStepSize, zStepSize, numberOfSteps};
 }
 
-//wirefram sphere oribit
-//use "sphere.obj"
+//wireframe sphere oribit
+//use "centered-sphere.obj"
 void scene1(DrawingWindow& window) {
 	std::vector<ModelTriangle> modelTriangles = objReader();
 
@@ -1111,6 +1112,7 @@ void scene4(DrawingWindow& window) {
 }
 
 //panning accross a glass logo. Demonstrating refractive materials
+//use "scene5.obj"
 void scene5(DrawingWindow& window) {
 
 	std::vector<ModelTriangle> modelTriangles = objReader();
@@ -1171,6 +1173,7 @@ void scene5(DrawingWindow& window) {
 }
 
 //orbit of a raytraced sphere shaded using phong
+//use "scene6.obj"
 void scene6(DrawingWindow& window) {
 	
 	std::vector<ModelTriangle> modelTriangles = objReader();
@@ -1305,14 +1308,14 @@ void handleEvent(SDL_Event event, DrawingWindow& window) {
 				std::cout << "Texturing: Off" << std::endl;
 			}
 		}
-		//scene
+		//scenes
 		else if (event.key.keysym.sym == SDLK_v) {
 			//scene1(window);
 			//scene2(window);
 			//scene3(window);
 			//scene4(window);
 			//scene5(window);
-			scene6(window);
+			//scene6(window);
 		}
 	}
 	else if (event.type == SDL_MOUSEBUTTONDOWN) {
