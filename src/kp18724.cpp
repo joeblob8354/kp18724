@@ -17,7 +17,7 @@
 #define HEIGHT 480
 #define pi 3.14159265358979323846 
 std::string renderMethod = "wire";
-std::string fileName = "scene3";
+std::string fileName = "scene6";
 bool texture = false;
 TextureMap checkerBoard("checkerboardfloor.ppm");
 TextureMap leopardPrint("leopardPrint.ppm");
@@ -28,7 +28,7 @@ float focalLength = 4;
 float depthBuffer[HEIGHT][WIDTH];
 glm::mat3 rotationMatrix(glm::vec3(1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
 glm::mat3 cameraOrientation(glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0));
-glm::vec3 lightSource(0, 1, 2);
+glm::vec3 lightSource(0, 1.95, 0);
 
 struct MtlEntry {
 	std::string name = "Default";
@@ -684,7 +684,7 @@ void draw(DrawingWindow& window, std::vector<ModelTriangle> modelTriangles) {
 				float specular = clamp(0, 1, powf(glm::dot(Rr, view), triangle.Ns));
 
 				float diffuse = lightIntensity * 0.7 + AOI * 0.3;
-				float brightnessModifier = diffuse * 0.6 + specular * 0.4;
+				float brightnessModifier = diffuse * 0.7 + specular * 0.3;
 
 				//gouraud AOI
 				/*glm::vec3 lightDirection = lightSource - rayIntersection.intersectionPoint;
@@ -894,7 +894,6 @@ std::vector<float> getStepSizes(glm::vec3 pos1, glm::vec3 pos2, float minNumberO
 }
 
 //wireframe sphere oribit
-//use "centered-sphere.obj"
 void scene1(DrawingWindow& window) {
 	std::vector<ModelTriangle> modelTriangles = objReader();
 
@@ -937,7 +936,6 @@ void scene1(DrawingWindow& window) {
 }
 
 //rasterised cornell box camera translation
-//use "cornell-box.obj"
 void scene2(DrawingWindow& window) {
 	std::vector<ModelTriangle> modelTriangles = objReader();
 
@@ -974,7 +972,6 @@ void scene2(DrawingWindow& window) {
 }
 
 //multi-waypoint camera tracking through ray traced scene. Mirror box, diffuse, AOI, and specular lighting
-// use "scene3.obj"
 void scene3(DrawingWindow& window) {
 	std::vector<ModelTriangle> modelTriangles = objReader();
 
@@ -1091,7 +1088,6 @@ void scene3(DrawingWindow& window) {
 }
 
 //light decending through the scene. Better demonstation of all lighting techniques
-//use "scene3.obj"
 void scene4(DrawingWindow& window) {
 	glm::vec3 lightStartPos(0, 1.95, 0);
 	glm::vec3 lightEndPos(0, -3, 0);
@@ -1112,7 +1108,6 @@ void scene4(DrawingWindow& window) {
 }
 
 //panning accross a glass logo. Demonstrating refractive materials
-//use "scene5.obj"
 void scene5(DrawingWindow& window) {
 
 	std::vector<ModelTriangle> modelTriangles = objReader();
@@ -1173,7 +1168,6 @@ void scene5(DrawingWindow& window) {
 }
 
 //orbit of a raytraced sphere shaded using phong
-//use "scene6.obj"
 void scene6(DrawingWindow& window) {
 	
 	std::vector<ModelTriangle> modelTriangles = objReader();
@@ -1334,7 +1328,5 @@ int main(int argc, char* argv[]) {
 		draw(window, modelTriangles);
 		// Need to render the frame at the end, or nothing actually gets shown on the screen !
 		window.renderFrame();
-		//std::cout << lightSource[0] << "," << lightSource[1] << "," << lightSource[2] << std::endl;
-		//std::cout << cameraPosition[0] << "," << cameraPosition[1] << "," << cameraPosition[2] << std::endl;
 	}
 }
